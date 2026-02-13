@@ -4,10 +4,17 @@ import { Bot, MessageSquare, Send, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
+const getDefaultApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('netlify.app')) {
+    return 'https://tashkent-city-grip-api.onrender.com';
+  }
+  return 'http://localhost:8000';
+};
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:8000'
+  getDefaultApiBaseUrl()
 ).replace(/\/+$/, '');
 const DEBUG_FLOW = import.meta.env.DEV || import.meta.env.VITE_DEBUG_FLOW === 'true';
 const REQUEST_TIMEOUT_MS = 25000;
