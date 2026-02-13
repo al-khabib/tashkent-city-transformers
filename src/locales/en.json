@@ -76,7 +76,7 @@
     "welcome": "Grid Assistant online. Ask about risks, district stress, or mitigation actions. I already see your current simulation state.",
     "placeholder": "Ask about overload risk or action plan...",
     "openAria": "Open AI assistant",
-    "backendError": "Unable to reach the AI backend at http://localhost:8000/ask.",
+    "backendError": "Unable to reach the AI backend.",
     "typing": "Typing...",
     "source": "Source {{index}}",
     "noResponse": "No response."

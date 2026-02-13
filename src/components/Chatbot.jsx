@@ -4,7 +4,11 @@ import { Bot, MessageSquare, Send, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:8000'
+).replace(/\/+$/, '');
 
 const resolveSourceUrl = (sourceLabel, sourceUrl) => {
   if (sourceUrl) return sourceUrl;

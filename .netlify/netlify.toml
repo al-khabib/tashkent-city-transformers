@@ -10,7 +10,6 @@ redirects = []
 publish = "/Users/bahtiyorjonarslonbekov/Documents/Work/tashkent_city_project_poc/dist"
 publishOrigin = "ui"
 commandOrigin = "ui"
-base = "/Users/bahtiyorjonarslonbekov/Documents/Work/tashkent_city_project_poc"
 command = "npm run build"
 
 [build.environment]

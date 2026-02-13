@@ -76,7 +76,7 @@
     "welcome": "Tarmoq yordamchisi ishga tushdi. Xavf, tumanlardagi yuklama yoki choralar bo'yicha savol bering. Joriy simulyatsiya holati allaqachon hisobga olingan.",
     "placeholder": "Ortiqcha yuklama xavfi yoki choralar rejasi haqida so'rang...",
     "openAria": "AI yordamchini ochish",
-    "backendError": "AI backend bilan aloqa amalga oshmadi: http://localhost:8000/ask.",
+    "backendError": "AI backend bilan aloqa amalga oshmadi.",
     "typing": "Yozmoqda...",
     "source": "Manba {{index}}",
     "noResponse": "Javob mavjud emas."
