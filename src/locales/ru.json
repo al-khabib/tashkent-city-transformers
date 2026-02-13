@@ -1,0 +1,87 @@
+{
+  "language": {
+    "label": "Язык",
+    "uz": "O'zbek",
+    "ru": "Русский",
+    "en": "English"
+  },
+  "sidebar": {
+    "searchJump": "Поиск и переход",
+    "searchPlaceholder": "ID трансформатора или район",
+    "noMatch": "Совпадений не найдено.",
+    "crisisSimulation": "Кризисная симуляция",
+    "environmentalStress": "Температура",
+    "urbanExpansion": "Урбанизация",
+    "criticalPriorities": "Критические приоритеты",
+    "criticalCount": "красных: {{count}}",
+    "noCritical": "В текущей симуляции нет красных трансформаторов.",
+    "age": "Возраст",
+    "years": "{{count}}г",
+    "na": "н/д"
+  },
+  "map": {
+    "transformer": "Трансформатор",
+    "load": "Нагрузка",
+    "capacityUtilization": "Использование мощности",
+    "status": "Статус",
+    "capacity": "Мощность",
+    "repairs": "Ремонты",
+    "deepAnalytics": "Подробная аналитика",
+    "risk": {
+      "critical": "Критично",
+      "watch": "Предупреждение",
+      "stable": "Норма"
+    }
+  },
+  "analytics": {
+    "title": "Аналитика",
+    "installed": "Год установки: {{year}}",
+    "projectedLoad": "Прогнозная нагрузка",
+    "riskLevel": "Уровень риска",
+    "replacementRecommended": "Рекомендуется замена",
+    "stressInputs": "Параметры стресса",
+    "temperature": "Температура",
+    "constructionSurge": "Рост урбанизации",
+    "demographicBase": "Демографическая база",
+    "maintenance": "Обслуживание",
+    "repairs": "Ремонты",
+    "highLoadFaults": "Сбои при высокой нагрузке",
+    "lastRepair": "Последний ремонт",
+    "winterPeaks": "Зимние пики",
+    "summerPeaks": "Летние пики",
+    "overAnnual": "+{{value}} п. выше среднего за год",
+    "winterInsight": "Спрос на отопление в январе вызывает этот пик.",
+    "summerInsight": "Летняя жара повышает нагрузку на охлаждение.",
+    "outageTimeline": "Хронология отключений",
+    "close": "Закрыть",
+    "loadAxis": "Нагрузка",
+    "history": "История",
+    "forecast": "Прогноз",
+    "risk": {
+      "critical": "Критично",
+      "watch": "Предупреждение",
+      "stable": "Норма"
+    },
+    "range": {
+      "today": "Сегодня",
+      "week": "Неделя",
+      "month": "Месяц",
+      "year": "Год",
+      "5year": "5 лет"
+    }
+  },
+  "chatbot": {
+    "title": "AI-ассистент сети",
+    "subtitle": "RAG с учетом контекста",
+    "welcome": "Ассистент сети онлайн. Спросите про риски, нагрузку по районам или меры реагирования. Текущее состояние симуляции уже учтено.",
+    "placeholder": "Спросите о рисках перегрузки или плане действий...",
+    "openAria": "Открыть AI-ассистента",
+    "backendError": "Не удалось подключиться к AI backend: http://localhost:8000/ask.",
+    "typing": "Печатает...",
+    "source": "Источник {{index}}",
+    "noResponse": "Нет ответа."
+  },
+  "controlPanel": {
+    "open": "Открыть панель управления"
+  }
+}

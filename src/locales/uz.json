@@ -1,0 +1,87 @@
+{
+  "language": {
+    "label": "Til",
+    "uz": "O'zbek",
+    "ru": "Русский",
+    "en": "English"
+  },
+  "sidebar": {
+    "searchJump": "Qidirish va o'tish",
+    "searchPlaceholder": "Transformator ID yoki tuman",
+    "noMatch": "Mos transformator topilmadi.",
+    "crisisSimulation": "Inqiroz simulyatsiyasi",
+    "environmentalStress": "Harorat",
+    "urbanExpansion": "Urbanizatsiya",
+    "criticalPriorities": "Kritik ustuvorliklar",
+    "criticalCount": "qizil: {{count}}",
+    "noCritical": "Joriy simulyatsiyada qizil transformatorlar yo'q.",
+    "age": "Yoshi",
+    "years": "{{count}}y",
+    "na": "mavjud emas"
+  },
+  "map": {
+    "transformer": "Transformator",
+    "load": "Yuklama",
+    "capacityUtilization": "Quvvatdan foydalanish",
+    "status": "Holat",
+    "capacity": "Quvvat",
+    "repairs": "Ta'mirlar",
+    "deepAnalytics": "Batafsil tahlil",
+    "risk": {
+      "critical": "Kritik",
+      "watch": "Ogohlantirish",
+      "stable": "Me'yorda"
+    }
+  },
+  "analytics": {
+    "title": "Tahlil",
+    "installed": "O'rnatilgan yil: {{year}}",
+    "projectedLoad": "Prognoz yuklama",
+    "riskLevel": "Xavf darajasi",
+    "replacementRecommended": "Almashtirish tavsiya etiladi",
+    "stressInputs": "Stress parametrlari",
+    "temperature": "Harorat",
+    "constructionSurge": "Urbanizatsiya o'sishi",
+    "demographicBase": "Demografik baza",
+    "maintenance": "Texnik xizmat",
+    "repairs": "Ta'mirlar",
+    "highLoadFaults": "Yuqori yuklama nosozliklari",
+    "lastRepair": "Oxirgi ta'mir",
+    "winterPeaks": "Qishki piklar",
+    "summerPeaks": "Yozgi piklar",
+    "overAnnual": "+{{value}} punkt yillik o'rtachadan yuqori",
+    "winterInsight": "Yanvardagi isitish talabi ushbu pikni keltirib chiqaradi.",
+    "summerInsight": "Iyul issig'ida sovitish yuklamasi keskin oshadi.",
+    "outageTimeline": "Uzilishlar tarixi",
+    "close": "Yopish",
+    "loadAxis": "Yuklama",
+    "history": "Tarix",
+    "forecast": "Prognoz",
+    "risk": {
+      "critical": "Kritik",
+      "watch": "Ogohlantirish",
+      "stable": "Me'yorda"
+    },
+    "range": {
+      "today": "Bugun",
+      "week": "Hafta",
+      "month": "Oy",
+      "year": "Yil",
+      "5year": "5 yil"
+    }
+  },
+  "chatbot": {
+    "title": "Tarmoq AI yordamchisi",
+    "subtitle": "Kontekstga mos RAG yordam",
+    "welcome": "Tarmoq yordamchisi ishga tushdi. Xavf, tumanlardagi yuklama yoki choralar bo'yicha savol bering. Joriy simulyatsiya holati allaqachon hisobga olingan.",
+    "placeholder": "Ortiqcha yuklama xavfi yoki choralar rejasi haqida so'rang...",
+    "openAria": "AI yordamchini ochish",
+    "backendError": "AI backend bilan aloqa amalga oshmadi: http://localhost:8000/ask.",
+    "typing": "Yozmoqda...",
+    "source": "Manba {{index}}",
+    "noResponse": "Javob mavjud emas."
+  },
+  "controlPanel": {
+    "open": "Boshqaruv panelini ochish"
+  }
+}

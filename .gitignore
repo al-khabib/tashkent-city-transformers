@@ -1,0 +1,13 @@
+/dist
+/node_modules
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+.venv/
+server/.venv/
+__pycache__/
+server/__pycache__/
+.DS_Store

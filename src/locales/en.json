@@ -1,0 +1,87 @@
+{
+  "language": {
+    "label": "Language",
+    "uz": "O'zbek",
+    "ru": "Русский",
+    "en": "English"
+  },
+  "sidebar": {
+    "searchJump": "Search & Jump",
+    "searchPlaceholder": "Transformer ID or district",
+    "noMatch": "No matching transformers found.",
+    "crisisSimulation": "Crisis Simulation",
+    "environmentalStress": "Temperature",
+    "urbanExpansion": "Urbanization",
+    "criticalPriorities": "Critical Priorities",
+    "criticalCount": "{{count}} red",
+    "noCritical": "No red transformers under current simulation.",
+    "age": "Age",
+    "years": "{{count}}y",
+    "na": "n/a"
+  },
+  "map": {
+    "transformer": "Transformer",
+    "load": "Load",
+    "capacityUtilization": "Capacity Utilization",
+    "status": "Status",
+    "capacity": "Capacity",
+    "repairs": "Repairs",
+    "deepAnalytics": "Deep Analytics",
+    "risk": {
+      "critical": "Critical",
+      "watch": "Warning",
+      "stable": "Safe"
+    }
+  },
+  "analytics": {
+    "title": "Analytics",
+    "installed": "Installed {{year}}",
+    "projectedLoad": "Projected Load",
+    "riskLevel": "Risk Level",
+    "replacementRecommended": "Replacement Recommended",
+    "stressInputs": "Stress Inputs",
+    "temperature": "Temperature",
+    "constructionSurge": "Urbanization Surge",
+    "demographicBase": "Demographic base",
+    "maintenance": "Maintenance",
+    "repairs": "Repairs",
+    "highLoadFaults": "High-load faults",
+    "lastRepair": "Last repair",
+    "winterPeaks": "Winter Peaks",
+    "summerPeaks": "Summer Peaks",
+    "overAnnual": "+{{value}} pts over annual avg",
+    "winterInsight": "Harsh January heating demand drives this spike.",
+    "summerInsight": "Cooling loads surge in July heatwaves.",
+    "outageTimeline": "Outage Timeline",
+    "close": "Close",
+    "loadAxis": "Load",
+    "history": "History",
+    "forecast": "Forecast",
+    "risk": {
+      "critical": "Critical",
+      "watch": "Warning",
+      "stable": "Safe"
+    },
+    "range": {
+      "today": "Today",
+      "week": "Week",
+      "month": "Month",
+      "year": "Year",
+      "5year": "5 Years"
+    }
+  },
+  "chatbot": {
+    "title": "Grid AI Assistant",
+    "subtitle": "Context-aware RAG support",
+    "welcome": "Grid Assistant online. Ask about risks, district stress, or mitigation actions. I already see your current simulation state.",
+    "placeholder": "Ask about overload risk or action plan...",
+    "openAria": "Open AI assistant",
+    "backendError": "Unable to reach the AI backend at http://localhost:8000/ask.",
+    "typing": "Typing...",
+    "source": "Source {{index}}",
+    "noResponse": "No response."
+  },
+  "controlPanel": {
+    "open": "Open grid controls"
+  }
+}
