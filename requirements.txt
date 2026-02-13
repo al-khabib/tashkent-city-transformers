@@ -2,6 +2,7 @@ fastapi
 uvicorn
 langchain
 langchain-community
+langchain-classic
 langchain-google-genai
 chromadb
 python-dotenv
