@@ -48,6 +48,7 @@ CHROMA_PATH = _resolve_chroma_path()
 LLM_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
 EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/embedding-001")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+RAG_ENABLED = os.getenv("RAG_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
 ALLOWED_ORIGINS = []
 for raw_origin in os.getenv("ALLOWED_ORIGINS", "*").split(","):
     origin = raw_origin.strip()
@@ -174,6 +175,15 @@ async def ask_question(item: ChatQuery, request: Request):
             state_str = f" [Current App State: {current_state}]"
             augmented_query += state_str
 
+        if not RAG_ENABLED:
+            fallback = llm.invoke(augmented_query)
+            fallback_answer = getattr(fallback, "content", str(fallback))
+            return {
+                "answer": fallback_answer,
+                "request_id": request.state.request_id,
+                "warning": "RAG disabled by config",
+            }
+
         try:
             response = qa_chain.invoke({"query": augmented_query})
             answer = response.get("result") or response.get("answer") or response.get("output_text")
@@ -210,6 +220,7 @@ async def health_check():
         "provider": "google-ai-studio",
         "model": LLM_MODEL,
         "embedding_model": EMBED_MODEL,
+        "rag_enabled": RAG_ENABLED,
         "chroma_path": CHROMA_PATH,
         "chroma_exists": os.path.isdir(CHROMA_PATH),
     }
