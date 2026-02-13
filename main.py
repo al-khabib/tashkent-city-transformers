@@ -46,8 +46,8 @@ _load_env()
 
 CHROMA_PATH = _resolve_chroma_path()
 LLM_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
-EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/embedding-001")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/text-embedding-004")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 RAG_ENABLED = os.getenv("RAG_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
 ALLOWED_ORIGINS = []
 for raw_origin in os.getenv("ALLOWED_ORIGINS", "*").split(","):
