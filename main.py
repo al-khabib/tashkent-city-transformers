@@ -46,7 +46,7 @@ _load_env()
 
 CHROMA_PATH = _resolve_chroma_path()
 LLM_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
-EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/text-embedding-004")
+EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/embedding-001")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 ALLOWED_ORIGINS = []
 for raw_origin in os.getenv("ALLOWED_ORIGINS", "*").split(","):
@@ -174,11 +174,22 @@ async def ask_question(item: ChatQuery, request: Request):
             state_str = f" [Current App State: {current_state}]"
             augmented_query += state_str
 
-        response = qa_chain.invoke({"query": augmented_query})
-        answer = response.get("result") or response.get("answer") or response.get("output_text")
-        if not answer:
-            answer = str(response)
-        return {"answer": answer, "request_id": request.state.request_id}
+        try:
+            response = qa_chain.invoke({"query": augmented_query})
+            answer = response.get("result") or response.get("answer") or response.get("output_text")
+            if not answer:
+                answer = str(response)
+            return {"answer": answer, "request_id": request.state.request_id}
+        except Exception as rag_error:
+            # Fallback keeps chatbot responsive if retrieval/embedding provider is misconfigured.
+            logger.exception("RAG invoke failed, falling back to direct LLM")
+            fallback = llm.invoke(augmented_query)
+            fallback_answer = getattr(fallback, "content", str(fallback))
+            return {
+                "answer": fallback_answer,
+                "request_id": request.state.request_id,
+                "warning": f"RAG unavailable, fallback used: {type(rag_error).__name__}",
+            }
     except HTTPException:
         raise
     except Exception as error:
