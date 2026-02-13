@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any, Dict, Optional
 
@@ -9,6 +10,10 @@ from langchain_classic.prompts import PromptTemplate
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from pydantic import BaseModel
+
+
+logger = logging.getLogger("grid-backend")
+logging.basicConfig(level=logging.INFO)
 
 
 def _load_env() -> None:
@@ -39,12 +44,14 @@ _load_env()
 CHROMA_PATH = _resolve_chroma_path()
 LLM_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
 EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/text-embedding-004")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")
-    if origin.strip()
-]
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+ALLOWED_ORIGINS = []
+for raw_origin in os.getenv("ALLOWED_ORIGINS", "*").split(","):
+    origin = raw_origin.strip()
+    if origin and origin != "*":
+        origin = origin.rstrip("/")
+    if origin:
+        ALLOWED_ORIGINS.append(origin)
 
 if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY is not set. Add it to .env or your environment.")
@@ -126,10 +133,14 @@ async def ask_question(item: ChatQuery):
             augmented_query += state_str
 
         response = qa_chain.invoke({"query": augmented_query})
-        return {"answer": response["result"]}
+        answer = response.get("result") or response.get("answer") or response.get("output_text")
+        if not answer:
+            answer = str(response)
+        return {"answer": answer}
     except HTTPException:
         raise
     except Exception as error:
+        logger.exception("ask_question failed")
         raise HTTPException(status_code=500, detail=str(error))
 
 
