@@ -4,6 +4,8 @@ import { Bot, MessageSquare, Send, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+
 const resolveSourceUrl = (sourceLabel, sourceUrl) => {
   if (sourceUrl) return sourceUrl;
   if (!sourceLabel) return null;
@@ -134,7 +136,7 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
     const strictQuery = `${trimmed}\n\n[Important: ${languageInstruction}]`;
 
     try {
-      const response = await fetch('http://localhost:8000/ask', {
+      const response = await fetch(`${API_BASE_URL}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -173,7 +175,7 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
         {
           id: `assistant-error-${Date.now()}`,
           role: 'assistant',
-          content: t('chatbot.backendError'),
+          content: `${t('chatbot.backendError')} (${API_BASE_URL}/ask)`,
           sources: [],
         },
       ]);

@@ -1,10 +1,8 @@
 fastapi
-uvicorn[standard]
-pydantic
+uvicorn
 langchain
 langchain-community
-langchain-groq
-langchain-huggingface
-sentence-transformers
+langchain-google-genai
 chromadb
 python-dotenv
+gunicorn

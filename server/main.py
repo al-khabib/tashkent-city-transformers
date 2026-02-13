@@ -5,44 +5,48 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 
 # --- 1. CONFIGURATION ---
-load_dotenv()
+ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
+load_dotenv(dotenv_path=ENV_PATH)
 
-CHROMA_PATH = "./chroma_db"
-EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-LLM_MODEL = os.getenv("GROQ_MODEL", "llama3-70b-8192")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+CHROMA_PATH = os.path.join(os.path.dirname(__file__), "chroma_db")
+LLM_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
+EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/text-embedding-004")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
 
-if not GROQ_API_KEY:
-    raise RuntimeError("GROQ_API_KEY is not set. Add it to your environment or .env file.")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY is not set. Add it to server/.env or your environment.")
 
 app = FastAPI(title="Tashkent Grid Advisor API")
 
 # Allow React frontend (usually port 5173 or 3000) to communicate
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace with your specific domain
+    allow_origins=ALLOWED_ORIGINS,  # In production, set ALLOWED_ORIGINS to explicit domains.
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # --- 2. MODEL INITIALIZATION ---
-# Initialize embeddings and vector store (no Ollama dependency)
-embeddings = HuggingFaceEmbeddings(
-    model_name=EMBED_MODEL,
-    model_kwargs={"device": "cpu"},
-    encode_kwargs={"normalize_embeddings": True},
+# Google AI Studio embeddings + vector store
+embeddings = GoogleGenerativeAIEmbeddings(
+    model=EMBED_MODEL,
+    google_api_key=GEMINI_API_KEY,
 )
 db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
-# Initialize Groq LLM
-llm = ChatGroq(model_name=LLM_MODEL, groq_api_key=GROQ_API_KEY, temperature=0.2)
+# Google AI Studio LLM
+llm = ChatGoogleGenerativeAI(
+    model=LLM_MODEL,
+    google_api_key=GEMINI_API_KEY,
+    temperature=0.2,
+)
 
 # Custom System Prompt for the Mayor's Advisor
 template = """
@@ -63,10 +67,6 @@ IMPORTANT:
 - If the user speaks in Russian, respond in Russian. 
 - If the user speaks in English, you MUST respond in either Uzbek or Russian (default to Russian if unsure). 
 - DO NOT respond in English.
-
-Context: {context}
-Question: {question}
-
 
 Answer:"""
 
@@ -113,8 +113,14 @@ async def ask_question(item: ChatQuery):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "online", "model": LLM_MODEL, "provider": "groq", "embedding_model": EMBED_MODEL}
+    return {
+        "status": "online",
+        "provider": "google-ai-studio",
+        "model": LLM_MODEL,
+        "embedding_model": EMBED_MODEL,
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
