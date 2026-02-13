@@ -17,7 +17,7 @@ const API_BASE_URL = (
   getDefaultApiBaseUrl()
 ).replace(/\/+$/, '');
 const DEBUG_FLOW = import.meta.env.DEV || import.meta.env.VITE_DEBUG_FLOW === 'true';
-const REQUEST_TIMEOUT_MS = 25000;
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 90000);
 
 const createRequestId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -158,7 +158,7 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
     const requestId = createRequestId();
     const startedAt = performance.now();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort('timeout'), REQUEST_TIMEOUT_MS);
 
     try {
       const response = await fetch(`${API_BASE_URL}/ask`, {
@@ -227,12 +227,22 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
         },
       ]);
     } catch (error) {
+      const timedOut =
+        error?.name === 'AbortError' ||
+        controller.signal.aborted ||
+        String(error?.message || '').toLowerCase().includes('aborted');
+      const userErrorMessage = timedOut
+        ? `${t('chatbot.backendError')} (${API_BASE_URL}/ask)\nRequest ID: ${requestId}\nTimeout: ${Math.round(
+            REQUEST_TIMEOUT_MS / 1000
+          )}s`
+        : `${t('chatbot.backendError')} (${API_BASE_URL}/ask)\nRequest ID: ${requestId}`;
+
       setMessages((prev) => [
         ...prev,
         {
           id: `assistant-error-${Date.now()}`,
           role: 'assistant',
-          content: `${t('chatbot.backendError')} (${API_BASE_URL}/ask)\nRequest ID: ${requestId}`,
+          content: userErrorMessage,
           sources: [],
         },
       ]);
