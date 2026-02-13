@@ -9,6 +9,15 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ||
   'http://localhost:8000'
 ).replace(/\/+$/, '');
+const DEBUG_FLOW = import.meta.env.DEV || import.meta.env.VITE_DEBUG_FLOW === 'true';
+const REQUEST_TIMEOUT_MS = 25000;
+
+const createRequestId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
 
 const resolveSourceUrl = (sourceLabel, sourceUrl) => {
   if (sourceUrl) return sourceUrl;
@@ -89,6 +98,7 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [lastTrace, setLastTrace] = useState(null);
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -138,11 +148,19 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
     const responseLanguage = detectResponseLanguage(trimmed);
     const languageInstruction = responseLanguageInstruction[responseLanguage];
     const strictQuery = `${trimmed}\n\n[Important: ${languageInstruction}]`;
+    const requestId = createRequestId();
+    const startedAt = performance.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
       const response = await fetch(`${API_BASE_URL}/ask`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+        },
+        signal: controller.signal,
         body: JSON.stringify({
           question: strictQuery,
           query: strictQuery,
@@ -153,17 +171,45 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
           },
         }),
       });
+      clearTimeout(timeoutId);
+      const responseRequestId = response.headers.get('x-request-id') || requestId;
 
       if (!response.ok) {
-        throw new Error(`Request failed: ${response.status}`);
+        let errorMessage = `Request failed: ${response.status}`;
+        try {
+          const errorPayload = await response.json();
+          if (typeof errorPayload?.detail === 'string') {
+            errorMessage = errorPayload.detail;
+          } else if (typeof errorPayload?.detail?.message === 'string') {
+            errorMessage = errorPayload.detail.message;
+          }
+        } catch {
+          // Ignore parse issues and keep the status-based message.
+        }
+        throw new Error(errorMessage);
       }
 
       const payload = await response.json();
+      const completedInMs = Math.round(performance.now() - startedAt);
       const assistantPayload = extractAssistantPayload(
         payload,
         (index) => t('chatbot.source', { index }),
         t('chatbot.noResponse')
       );
+      const payloadRequestId = payload?.request_id || responseRequestId;
+      setLastTrace({
+        requestId: payloadRequestId,
+        status: response.status,
+        durationMs: completedInMs,
+      });
+      if (DEBUG_FLOW) {
+        console.info('[Chatbot] request success', {
+          requestId: payloadRequestId,
+          status: response.status,
+          durationMs: completedInMs,
+          api: `${API_BASE_URL}/ask`,
+        });
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -179,11 +225,25 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
         {
           id: `assistant-error-${Date.now()}`,
           role: 'assistant',
-          content: `${t('chatbot.backendError')} (${API_BASE_URL}/ask)`,
+          content: `${t('chatbot.backendError')} (${API_BASE_URL}/ask)\nRequest ID: ${requestId}`,
           sources: [],
         },
       ]);
+      const completedInMs = Math.round(performance.now() - startedAt);
+      setLastTrace({
+        requestId,
+        status: 'error',
+        durationMs: completedInMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      console.error('[Chatbot] request failed', {
+        requestId,
+        durationMs: completedInMs,
+        api: `${API_BASE_URL}/ask`,
+        error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
@@ -281,6 +341,11 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
                 </button>
               </div>
             </form>
+            {DEBUG_FLOW && lastTrace && (
+              <div className="border-t border-slate-800 px-3 py-2 text-[11px] text-slate-400">
+                Trace: {lastTrace.requestId} | {String(lastTrace.status)} | {lastTrace.durationMs}ms
+              </div>
+            )}
           </motion.section>
         )}
       </AnimatePresence>

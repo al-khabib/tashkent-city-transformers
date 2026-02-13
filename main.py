@@ -1,10 +1,13 @@
 import logging
 import os
+import time
+import uuid
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from langchain_classic.chains import RetrievalQA
 from langchain_classic.prompts import PromptTemplate
 from langchain_community.vectorstores import Chroma
@@ -65,6 +68,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    start_time = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.exception(
+            "Unhandled error",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "duration_ms": duration_ms,
+            },
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "request_id": request_id,
+            },
+            headers={"X-Request-ID": request_id},
+        )
+
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    logger.info(
+        "%s %s %s %.2fms",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
+
 # --- 2. MODEL INITIALIZATION ---
 embeddings = GoogleGenerativeAIEmbeddings(
     model=EMBED_MODEL,
@@ -120,7 +162,7 @@ class ChatQuery(BaseModel):
 
 
 @app.post("/ask")
-async def ask_question(item: ChatQuery):
+async def ask_question(item: ChatQuery, request: Request):
     try:
         query = (item.query or item.question or "").strip()
         if not query:
@@ -136,12 +178,18 @@ async def ask_question(item: ChatQuery):
         answer = response.get("result") or response.get("answer") or response.get("output_text")
         if not answer:
             answer = str(response)
-        return {"answer": answer}
+        return {"answer": answer, "request_id": request.state.request_id}
     except HTTPException:
         raise
     except Exception as error:
         logger.exception("ask_question failed")
-        raise HTTPException(status_code=500, detail=str(error))
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": str(error),
+                "request_id": request.state.request_id,
+            },
+        )
 
 
 @app.get("/health")
@@ -151,6 +199,8 @@ async def health_check():
         "provider": "google-ai-studio",
         "model": LLM_MODEL,
         "embedding_model": EMBED_MODEL,
+        "chroma_path": CHROMA_PATH,
+        "chroma_exists": os.path.isdir(CHROMA_PATH),
     }
 
 
