@@ -3,8 +3,8 @@ import shutil
 
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
@@ -21,7 +21,7 @@ def main() -> None:
     base_dir = os.path.dirname(__file__)
     data_dir = os.path.join(base_dir, "data")
     chroma_dir = os.path.join(base_dir, "chroma_db")
-    embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model = "BAAI/bge-small-en-v1.5"
 
     if not os.path.isdir(data_dir):
         raise FileNotFoundError(f"Data folder not found: {data_dir}")
@@ -31,13 +31,13 @@ def main() -> None:
     if not docs:
         raise RuntimeError(f"No PDF documents found in: {data_dir}")
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     chunks = splitter.split_documents(docs)
 
     if os.path.isdir(chroma_dir):
         shutil.rmtree(chroma_dir)
 
-    embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
+    embeddings = FastEmbedEmbeddings(model_name=embedding_model)
     db = Chroma.from_documents(chunks, embeddings, persist_directory=chroma_dir)
     if hasattr(db, "persist"):
         db.persist()

@@ -10,9 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from langchain_classic.chains import RetrievalQA
 from langchain_classic.prompts import PromptTemplate
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
 from pydantic import BaseModel
 
 
@@ -39,7 +39,7 @@ def _resolve_chroma_path() -> str:
 _load_env()
 
 CHROMA_PATH = _resolve_chroma_path()
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -95,7 +95,7 @@ async def request_logging_middleware(request: Request, call_next):
 
 
 # --- RAG setup ---
-embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+embeddings = FastEmbedEmbeddings(model_name=EMBEDDING_MODEL)
 db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
 llm = ChatGroq(

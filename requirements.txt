@@ -7,7 +7,6 @@ langchain-groq
 chromadb
 python-dotenv
 gunicorn
-sentence-transformers
-langchain-huggingface
+fastembed
 langchain-text-splitters
 pypdf
