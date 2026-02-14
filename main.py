@@ -8,7 +8,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from langchain_classic.chains import RetrievalQA
+from langchain_classic.prompts import PromptTemplate
+from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
+from langchain_huggingface import HuggingFaceEmbeddings
 from pydantic import BaseModel
 
 
@@ -29,22 +33,16 @@ def _load_env() -> None:
 
 def _resolve_chroma_path() -> str:
     base_dir = os.path.dirname(__file__)
-    primary = os.path.join(base_dir, "chroma_db")
-    legacy = os.path.join(base_dir, "server", "chroma_db")
-    if os.path.isdir(primary):
-        return primary
-    if os.path.isdir(legacy):
-        return legacy
-    return primary
+    return os.path.join(base_dir, "chroma_db")
 
 
-# --- 1. CONFIGURATION ---
 _load_env()
 
 CHROMA_PATH = _resolve_chroma_path()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-RAG_ENABLED = os.getenv("RAG_ENABLED", "false").strip().lower() not in {"0", "false", "no", "off"}
+
 ALLOWED_ORIGINS = []
 for raw_origin in os.getenv("ALLOWED_ORIGINS", "*").split(","):
     origin = raw_origin.strip()
@@ -86,10 +84,7 @@ async def request_logging_middleware(request: Request, call_next):
         )
         return JSONResponse(
             status_code=500,
-            content={
-                "detail": "Internal server error",
-                "request_id": request_id,
-            },
+            content={"detail": "Internal server error", "request_id": request_id},
             headers={"X-Request-ID": request_id},
         )
 
@@ -99,34 +94,35 @@ async def request_logging_middleware(request: Request, call_next):
     return response
 
 
-# --- 2. MODEL INITIALIZATION ---
+# --- RAG setup ---
+embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+
 llm = ChatGroq(
     model_name=GROQ_MODEL,
     groq_api_key=GROQ_API_KEY,
     temperature=0.2,
 )
 
-SYSTEM_PROMPT = """
-You are the Tashkent City Infrastructure & Energy Strategic Advisor.
-Your goal is to provide data-driven advice regarding electrical transformer banks.
+QA_PROMPT = PromptTemplate(
+    template=(
+        "You are a Tashkent Grid Safety Expert.\n"
+        "You must answer ONLY using the provided legal context.\n"
+        "If the answer is not in the context, state that clearly.\n"
+        "Do not invent laws, decrees, or regulations.\n\n"
+        "Legal context:\n{context}\n\n"
+        "Question:\n{question}\n\n"
+        "Answer:"
+    ),
+    input_variables=["context", "question"],
+)
 
-Instructions:
-1. Be accurate and concise.
-2. If you are missing concrete data, clearly say so.
-3. Keep the tone professional and actionable.
-4. If a regulatory reference is provided in user context, cite it.
-
-IMPORTANT:
-- If the user speaks in Uzbek, respond in Uzbek.
-- If the user speaks in Russian, respond in Russian.
-- If the user speaks in English, you MUST respond in either Uzbek or Russian (default to Russian if unsure).
-- DO NOT respond in English.
-""".strip()
-
-if RAG_ENABLED:
-    logger.warning(
-        "RAG_ENABLED=true but Groq-only mode is active. Retrieval is skipped unless a separate embedding/retrieval stack is configured."
-    )
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=db.as_retriever(search_kwargs={"k": 3}),
+    chain_type_kwargs={"prompt": QA_PROMPT},
+)
 
 
 class ChatQuery(BaseModel):
@@ -148,31 +144,19 @@ async def ask_question(item: ChatQuery, request: Request):
         if current_state:
             augmented_query += f" [Current App State: {current_state}]"
 
-        response = llm.invoke(
-            [
-                ("system", SYSTEM_PROMPT),
-                ("human", augmented_query),
-            ]
-        )
-        answer = getattr(response, "content", str(response))
+        result = qa_chain.invoke({"query": augmented_query})
+        answer = result.get("result") or result.get("answer") or result.get("output_text")
+        if not answer:
+            answer = str(result)
 
-        payload = {
-            "answer": answer,
-            "request_id": request.state.request_id,
-        }
-        if RAG_ENABLED:
-            payload["warning"] = "RAG is disabled in Groq-only mode unless embeddings are configured."
-        return payload
+        return {"answer": answer, "request_id": request.state.request_id}
     except HTTPException:
         raise
     except Exception as error:
         logger.exception("ask_question failed")
         raise HTTPException(
             status_code=500,
-            detail={
-                "message": str(error),
-                "request_id": request.state.request_id,
-            },
+            detail={"message": str(error), "request_id": request.state.request_id},
         )
 
 
@@ -180,9 +164,9 @@ async def ask_question(item: ChatQuery, request: Request):
 async def health_check():
     return {
         "status": "online",
-        "provider": "groq",
+        "provider": "groq-rag",
         "model": GROQ_MODEL,
-        "rag_enabled": RAG_ENABLED,
+        "embedding_model": EMBEDDING_MODEL,
         "chroma_path": CHROMA_PATH,
         "chroma_exists": os.path.isdir(CHROMA_PATH),
     }
