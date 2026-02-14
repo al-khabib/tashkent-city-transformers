@@ -3,7 +3,7 @@ uvicorn
 langchain
 langchain-community
 langchain-classic
-langchain-google-genai
+langchain-groq
 chromadb
 python-dotenv
 gunicorn

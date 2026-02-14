@@ -8,10 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from langchain_classic.chains import RetrievalQA
-from langchain_classic.prompts import PromptTemplate
-from langchain_community.vectorstores import Chroma
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_groq import ChatGroq
 from pydantic import BaseModel
 
 
@@ -45,10 +42,9 @@ def _resolve_chroma_path() -> str:
 _load_env()
 
 CHROMA_PATH = _resolve_chroma_path()
-LLM_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
-EMBED_MODEL = os.getenv("GOOGLE_EMBED_MODEL", "models/text-embedding-004")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-RAG_ENABLED = os.getenv("RAG_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+RAG_ENABLED = os.getenv("RAG_ENABLED", "false").strip().lower() not in {"0", "false", "no", "off"}
 ALLOWED_ORIGINS = []
 for raw_origin in os.getenv("ALLOWED_ORIGINS", "*").split(","):
     origin = raw_origin.strip()
@@ -57,8 +53,8 @@ for raw_origin in os.getenv("ALLOWED_ORIGINS", "*").split(","):
     if origin:
         ALLOWED_ORIGINS.append(origin)
 
-if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY is not set. Add it to .env or your environment.")
+if not GROQ_API_KEY:
+    raise RuntimeError("GROQ_API_KEY is not set. Add it to .env or your environment.")
 
 app = FastAPI(title="Tashkent Grid Advisor API")
 
@@ -98,61 +94,39 @@ async def request_logging_middleware(request: Request, call_next):
         )
 
     duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
-    logger.info(
-        "%s %s %s %.2fms",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-    )
+    logger.info("%s %s %s %.2fms", request.method, request.url.path, response.status_code, duration_ms)
     response.headers["X-Request-ID"] = request_id
     return response
 
-# --- 2. MODEL INITIALIZATION ---
-embeddings = GoogleGenerativeAIEmbeddings(
-    model=EMBED_MODEL,
-    google_api_key=GEMINI_API_KEY,
-)
-db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
-llm = ChatGoogleGenerativeAI(
-    model=LLM_MODEL,
-    google_api_key=GEMINI_API_KEY,
+# --- 2. MODEL INITIALIZATION ---
+llm = ChatGroq(
+    model_name=GROQ_MODEL,
+    groq_api_key=GROQ_API_KEY,
     temperature=0.2,
 )
 
-template = """
+SYSTEM_PROMPT = """
 You are the Tashkent City Infrastructure & Energy Strategic Advisor.
 Your goal is to provide data-driven advice regarding electrical transformer banks.
 
-Context: {context}
-Question: {question}
-
 Instructions:
-1. Use ONLY the provided context to answer.
-2. If the context mentions a Presidential Decree (e.g., PP-444), cite it specifically.
-3. If you don't know the answer based on the context, say you don't have that specific data.
-4. Keep the tone professional, authoritative, and concise.
+1. Be accurate and concise.
+2. If you are missing concrete data, clearly say so.
+3. Keep the tone professional and actionable.
+4. If a regulatory reference is provided in user context, cite it.
 
 IMPORTANT:
 - If the user speaks in Uzbek, respond in Uzbek.
 - If the user speaks in Russian, respond in Russian.
 - If the user speaks in English, you MUST respond in either Uzbek or Russian (default to Russian if unsure).
 - DO NOT respond in English.
+""".strip()
 
-Answer:"""
-
-QA_PROMPT = PromptTemplate(
-    template=template,
-    input_variables=["context", "question"],
-)
-
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=db.as_retriever(search_kwargs={"k": 3}),
-    chain_type_kwargs={"prompt": QA_PROMPT},
-)
+if RAG_ENABLED:
+    logger.warning(
+        "RAG_ENABLED=true but Groq-only mode is active. Retrieval is skipped unless a separate embedding/retrieval stack is configured."
+    )
 
 
 class ChatQuery(BaseModel):
@@ -172,34 +146,23 @@ async def ask_question(item: ChatQuery, request: Request):
         augmented_query = query
         current_state = item.context_snapshot or item.context
         if current_state:
-            state_str = f" [Current App State: {current_state}]"
-            augmented_query += state_str
+            augmented_query += f" [Current App State: {current_state}]"
 
-        if not RAG_ENABLED:
-            fallback = llm.invoke(augmented_query)
-            fallback_answer = getattr(fallback, "content", str(fallback))
-            return {
-                "answer": fallback_answer,
-                "request_id": request.state.request_id,
-                "warning": "RAG disabled by config",
-            }
+        response = llm.invoke(
+            [
+                ("system", SYSTEM_PROMPT),
+                ("human", augmented_query),
+            ]
+        )
+        answer = getattr(response, "content", str(response))
 
-        try:
-            response = qa_chain.invoke({"query": augmented_query})
-            answer = response.get("result") or response.get("answer") or response.get("output_text")
-            if not answer:
-                answer = str(response)
-            return {"answer": answer, "request_id": request.state.request_id}
-        except Exception as rag_error:
-            # Fallback keeps chatbot responsive if retrieval/embedding provider is misconfigured.
-            logger.exception("RAG invoke failed, falling back to direct LLM")
-            fallback = llm.invoke(augmented_query)
-            fallback_answer = getattr(fallback, "content", str(fallback))
-            return {
-                "answer": fallback_answer,
-                "request_id": request.state.request_id,
-                "warning": f"RAG unavailable, fallback used: {type(rag_error).__name__}",
-            }
+        payload = {
+            "answer": answer,
+            "request_id": request.state.request_id,
+        }
+        if RAG_ENABLED:
+            payload["warning"] = "RAG is disabled in Groq-only mode unless embeddings are configured."
+        return payload
     except HTTPException:
         raise
     except Exception as error:
@@ -217,9 +180,8 @@ async def ask_question(item: ChatQuery, request: Request):
 async def health_check():
     return {
         "status": "online",
-        "provider": "google-ai-studio",
-        "model": LLM_MODEL,
-        "embedding_model": EMBED_MODEL,
+        "provider": "groq",
+        "model": GROQ_MODEL,
         "rag_enabled": RAG_ENABLED,
         "chroma_path": CHROMA_PATH,
         "chroma_exists": os.path.isdir(CHROMA_PATH),
