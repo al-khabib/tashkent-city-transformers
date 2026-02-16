@@ -73,6 +73,13 @@ const extractAssistantPayload = (payload, getFallbackLabel, defaultText) => {
   };
 };
 
+const getFutureCriticalDistricts = (futureState) => {
+  const districts = futureState?.district_predictions || [];
+  return [...districts]
+    .sort((a, b) => (b.load_percentage || 0) - (a.load_percentage || 0))
+    .slice(0, 3);
+};
+
 function TypingDots({ label }) {
   return (
     <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2">
@@ -224,6 +231,7 @@ function Chatbot({ temperature, construction, selectedTransformerId, futureMode,
           role: 'assistant',
           content: assistantPayload.text,
           prediction: payload?.mode === 'prediction' ? payload?.prediction || null : null,
+          futureState: payload?.future_state || null,
           sources: assistantPayload.sources,
         },
       ]);
@@ -372,6 +380,61 @@ function Chatbot({ temperature, construction, selectedTransformerId, futureMode,
                         </p>
                       </div>
                     )}
+                    {message.role === 'assistant' &&
+                      message.futureState?.district_predictions?.length > 0 && (
+                        <div className="mt-3 rounded-xl border border-cyan-500/30 bg-slate-900/80 p-3 text-xs text-slate-200">
+                          <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-cyan-300">
+                            Future Mode Report • {message.futureState.target_date}
+                          </p>
+                          <div className="space-y-1.5">
+                            {message.futureState.district_predictions.map((row) => (
+                              <div
+                                key={`${message.id}-${row.district}`}
+                                className="rounded-lg border border-slate-700/80 bg-slate-800/60 p-2"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-slate-100">{row.district}</span>
+                                  <span
+                                    className={
+                                      row.load_percentage > 90
+                                        ? 'text-rose-300'
+                                        : row.load_percentage >= 70
+                                          ? 'text-amber-300'
+                                          : 'text-emerald-300'
+                                    }
+                                  >
+                                    {(row.load_percentage ?? 0).toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-300">
+                                  <span>Load: {(row.predicted_load_mw ?? 0).toFixed(2)} MW</span>
+                                  <span>Capacity: {(row.current_capacity_mw ?? 0).toFixed(2)} MW</span>
+                                  <span>Risk: {row.risk_level || 'N/A'}</span>
+                                  <span>TP Needed: {row.transformers_needed ?? 0}</span>
+                                  <span>
+                                    Density: {row.affecting_factors?.population_density ?? 'N/A'}
+                                  </span>
+                                  <span>Temp: {row.affecting_factors?.avg_temp ?? 'N/A'} C</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-3 rounded-lg border border-slate-700/80 bg-slate-800/50 p-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-300">
+                              Top Critical Districts
+                            </p>
+                            <div className="mt-1 space-y-1 text-[11px] text-slate-200">
+                              {getFutureCriticalDistricts(message.futureState).map((item) => (
+                                <p key={`${message.id}-critical-${item.district}`}>
+                                  {item.district}: {(item.load_percentage ?? 0).toFixed(1)}% • TP{' '}
+                                  {item.transformers_needed ?? 0}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     {message.role === 'assistant' && message.sources?.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {message.sources.map((source) => (
