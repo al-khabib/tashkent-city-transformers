@@ -79,7 +79,16 @@
     "backendError": "Unable to reach the AI backend.",
     "typing": "Typing...",
     "source": "Source {{index}}",
-    "noResponse": "No response."
+    "noResponse": "No response.",
+    "prediction": {
+      "district": "District",
+      "targetDate": "Target Date",
+      "predictedLoad": "Predicted Load",
+      "capacity": "Current Capacity",
+      "loadGap": "Load Gap",
+      "riskScore": "Risk Score",
+      "transformersNeeded": "Transformers Needed"
+    }
   },
   "controlPanel": {
     "open": "Open grid controls"

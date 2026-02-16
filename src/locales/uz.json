@@ -79,7 +79,16 @@
     "backendError": "AI backend bilan aloqa amalga oshmadi.",
     "typing": "Yozmoqda...",
     "source": "Manba {{index}}",
-    "noResponse": "Javob mavjud emas."
+    "noResponse": "Javob mavjud emas.",
+    "prediction": {
+      "district": "Tuman",
+      "targetDate": "Maqsad sana",
+      "predictedLoad": "Prognoz yuklama",
+      "capacity": "Joriy quvvat",
+      "loadGap": "Yuklama farqi",
+      "riskScore": "Xavf darajasi",
+      "transformersNeeded": "Kerakli TP soni"
+    }
   },
   "controlPanel": {
     "open": "Boshqaruv panelini ochish"

@@ -73,18 +73,6 @@ const extractAssistantPayload = (payload, getFallbackLabel, defaultText) => {
   };
 };
 
-const detectResponseLanguage = (input) => {
-  if (/[А-Яа-яЁё]/.test(input)) {
-    return 'ru';
-  }
-  return 'uz';
-};
-
-const responseLanguageInstruction = {
-  uz: 'Respond strictly in Uzbek language. Do not use Russian or English.',
-  ru: 'Respond strictly in Russian language. Do not use Uzbek or English.',
-};
-
 function TypingDots({ label }) {
   return (
     <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2">
@@ -152,9 +140,6 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
     setInput('');
     setIsLoading(true);
 
-    const responseLanguage = detectResponseLanguage(trimmed);
-    const languageInstruction = responseLanguageInstruction[responseLanguage];
-    const strictQuery = `${trimmed}\n\n[Important: ${languageInstruction}]`;
     const requestId = createRequestId();
     const startedAt = performance.now();
     const controller = new AbortController();
@@ -169,12 +154,10 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
         },
         signal: controller.signal,
         body: JSON.stringify({
-          question: strictQuery,
-          query: strictQuery,
+          question: trimmed,
+          query: trimmed,
           context: {
             ...contextState,
-            responseLanguage,
-            languageInstruction,
           },
         }),
       });
@@ -223,6 +206,7 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: assistantPayload.text,
+          prediction: payload?.mode === 'prediction' ? payload?.prediction || null : null,
           sources: assistantPayload.sources,
         },
       ]);
@@ -314,6 +298,48 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
                     }`}
                   >
                     <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                    {message.role === 'assistant' && message.prediction && (
+                      <div className="mt-2 rounded-xl border border-slate-700 bg-slate-800/70 p-3 text-xs text-slate-200">
+                        <p>
+                          <span className="text-slate-400">{t('chatbot.prediction.district')}:</span>{' '}
+                          {message.prediction.district}
+                        </p>
+                        <p>
+                          <span className="text-slate-400">{t('chatbot.prediction.targetDate')}:</span>{' '}
+                          {message.prediction.target_date}
+                        </p>
+                        <p>
+                          <span className="text-slate-400">{t('chatbot.prediction.predictedLoad')}:</span>{' '}
+                          {message.prediction.predicted_load_mw} MW
+                        </p>
+                        <p>
+                          <span className="text-slate-400">{t('chatbot.prediction.capacity')}:</span>{' '}
+                          {message.prediction.current_capacity_mw} MW
+                        </p>
+                        <p>
+                          <span className="text-slate-400">{t('chatbot.prediction.loadGap')}:</span>{' '}
+                          {message.prediction.load_gap_mw} MW
+                        </p>
+                        <p>
+                          <span className="text-slate-400">{t('chatbot.prediction.riskScore')}:</span>{' '}
+                          <span
+                            className={
+                              message.prediction.risk_score >= 8
+                                ? 'text-rose-300'
+                                : message.prediction.risk_score >= 5
+                                  ? 'text-amber-300'
+                                  : 'text-emerald-300'
+                            }
+                          >
+                            {message.prediction.risk_score}/10
+                          </span>
+                        </p>
+                        <p>
+                          <span className="text-slate-400">{t('chatbot.prediction.transformersNeeded')}:</span>{' '}
+                          {message.prediction.transformers_needed}
+                        </p>
+                      </div>
+                    )}
                     {message.role === 'assistant' && message.sources?.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {message.sources.map((source) => (

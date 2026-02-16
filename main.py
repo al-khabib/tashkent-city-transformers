@@ -46,6 +46,16 @@ def _safe_json_parse(raw_text: str) -> Optional[Dict[str, Any]]:
             return None
 
 
+def _detect_language_fast(text: str) -> str:
+    if re.search(r"[А-Яа-яЁё]", text):
+        return "ru"
+    lowered = text.lower()
+    uz_markers = ("qanday", "bo'yicha", "uchun", "tuman", "yil", "kerak", "salom")
+    if any(marker in lowered for marker in uz_markers):
+        return "uz"
+    return "en"
+
+
 def _resolve_base_dir() -> str:
     return os.path.dirname(__file__)
 
@@ -199,11 +209,39 @@ def extract_prediction_params(query: str) -> Dict[str, str]:
     return {"district": district, "target_date": target_date}
 
 
+def translate_to_english(text: str, source_lang: str) -> str:
+    if source_lang == "en":
+        return text
+    prompt = (
+        "Translate the following text to English.\n"
+        "Return only the translated text, no comments.\n\n"
+        f"Source language: {source_lang}\n"
+        f"Text: {text}"
+    )
+    return str(llm.invoke(prompt)).strip()
+
+
+def translate_from_english(text: str, target_lang: str) -> str:
+    if target_lang == "en":
+        return text
+    prompt = (
+        f"Translate the following text from English to {target_lang}.\n"
+        "Keep structure and bullet points.\n"
+        "Return only translated text.\n\n"
+        f"Text: {text}"
+    )
+    return str(llm.invoke(prompt)).strip()
+
+
 def explain_prediction_for_mayor(query: str, prediction: Dict[str, Any]) -> str:
     brief_prompt = (
         "You are briefing the Mayor of Tashkent.\n"
-        "Turn the prediction numbers into a concise operational warning.\n"
-        "Use 4 bullet points: Forecast, Capacity Gap, Risk Score (1-10), Required TP Actions.\n"
+        "Turn the prediction numbers into a concise operational warning in English.\n"
+        "Use exactly 4 bullet points with clear labels:\n"
+        "- Forecast\n"
+        "- Capacity Gap\n"
+        "- Risk Score (1-10)\n"
+        "- TP Action Plan\n"
         "Tone: executive, direct, actionable.\n\n"
         f"Original question: {query}\n"
         f"Prediction data: {json.dumps(prediction, ensure_ascii=True)}"
@@ -247,13 +285,18 @@ async def ask_question(item: ChatQuery, request: Request):
         if not query:
             raise HTTPException(status_code=400, detail="Query is required.")
 
-        params = extract_prediction_params(query)
+        user_language = _detect_language_fast(query)
+        query_en = translate_to_english(query, user_language)
+
+        params = extract_prediction_params(query_en)
         prediction = predict_grid_load(params["district"], params["target_date"])
-        answer = explain_prediction_for_mayor(query, prediction)
+        answer_en = explain_prediction_for_mayor(query_en, prediction)
+        answer = translate_from_english(answer_en, user_language)
         return {
             "answer": answer,
             "request_id": request.state.request_id,
             "mode": "prediction",
+            "user_language": user_language,
             "prediction": prediction,
         }
     except HTTPException:
