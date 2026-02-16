@@ -14,11 +14,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from langchain_classic.chains import RetrievalQA
-from langchain_classic.prompts import PromptTemplate
-from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.llms import Ollama
-from langchain_community.vectorstores import Chroma
 from pydantic import BaseModel
 
 
@@ -78,12 +74,10 @@ def _parse_target_date(target_date: str) -> date:
 _load_env()
 
 BASE_DIR = _resolve_base_dir()
-CHROMA_PATH = _resolve_path("chroma_db")
 CSV_PATH = _resolve_path(os.getenv("GRID_DATA_CSV", "tashkent_grid_historic_data.csv"))
 MODEL_PATH = _resolve_path(os.getenv("GRID_MODEL_PATH", "grid_load_rf.joblib"))
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "llama3.1:8b")
-OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -131,39 +125,10 @@ async def request_logging_middleware(request: Request, call_next):
     return response
 
 
-# --- RAG setup (Ollama + Chroma) ---
-embeddings = OllamaEmbeddings(
-    model=OLLAMA_EMBED_MODEL,
-    base_url=OLLAMA_BASE_URL,
-)
-db = Chroma(
-    persist_directory=CHROMA_PATH,
-    embedding_function=embeddings,
-)
-
 llm = Ollama(
     model=OLLAMA_LLM_MODEL,
     base_url=OLLAMA_BASE_URL,
     temperature=0.2,
-)
-
-QA_PROMPT = PromptTemplate(
-    template=(
-        "You are a Tashkent Grid Safety Expert.\n"
-        "You must answer only from the legal context below.\n"
-        "If the context is insufficient, say so clearly.\n\n"
-        "Legal context:\n{context}\n\n"
-        "Question:\n{question}\n\n"
-        "Answer:"
-    ),
-    input_variables=["context", "question"],
-)
-
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=db.as_retriever(search_kwargs={"k": 3}),
-    chain_type_kwargs={"prompt": QA_PROMPT},
 )
 
 
@@ -210,25 +175,6 @@ def predict_grid_load(district: str, target_date: str) -> Dict[str, Any]:
     }
 
 
-def route_query_type(query: str) -> str:
-    router_prompt = (
-        "Classify this user question into one label only: "
-        "prediction or law.\n"
-        "prediction = forecasting future load/capacity/risk/timeframe.\n"
-        "law = legal rules, regulations, standards, compliance.\n\n"
-        f"Question: {query}\n"
-        "Output JSON only: {\"type\":\"prediction\"} or {\"type\":\"law\"}"
-    )
-    raw = llm.invoke(router_prompt)
-    parsed = _safe_json_parse(str(raw))
-    if parsed and parsed.get("type") in {"prediction", "law"}:
-        return parsed["type"]
-    lower = query.lower()
-    if any(token in lower for token in ("forecast", "predict", "2030", "2027", "future", "next year", "load")):
-        return "prediction"
-    return "law"
-
-
 def extract_prediction_params(query: str) -> Dict[str, str]:
     parser_prompt = (
         "Extract district and target_date from the request.\n"
@@ -272,6 +218,28 @@ class ChatQuery(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
+class PredictRequest(BaseModel):
+    district: str
+    target_date: str
+
+
+@app.post("/predict")
+async def predict_endpoint(item: PredictRequest, request: Request):
+    try:
+        prediction = predict_grid_load(item.district, item.target_date)
+        return {
+            "request_id": request.state.request_id,
+            "mode": "prediction",
+            "prediction": prediction,
+        }
+    except Exception as error:
+        logger.exception("predict_endpoint failed")
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(error), "request_id": request.state.request_id},
+        )
+
+
 @app.post("/ask")
 async def ask_question(item: ChatQuery, request: Request):
     try:
@@ -279,24 +247,14 @@ async def ask_question(item: ChatQuery, request: Request):
         if not query:
             raise HTTPException(status_code=400, detail="Query is required.")
 
-        query_type = route_query_type(query)
-        if query_type == "prediction":
-            params = extract_prediction_params(query)
-            prediction = predict_grid_load(params["district"], params["target_date"])
-            answer = explain_prediction_for_mayor(query, prediction)
-            return {
-                "answer": answer,
-                "request_id": request.state.request_id,
-                "mode": "prediction",
-                "prediction": prediction,
-            }
-
-        rag_result = qa_chain.invoke({"query": query})
-        answer = rag_result.get("result") or rag_result.get("answer") or str(rag_result)
+        params = extract_prediction_params(query)
+        prediction = predict_grid_load(params["district"], params["target_date"])
+        answer = explain_prediction_for_mayor(query, prediction)
         return {
             "answer": answer,
             "request_id": request.state.request_id,
-            "mode": "law",
+            "mode": "prediction",
+            "prediction": prediction,
         }
     except HTTPException:
         raise
@@ -312,13 +270,12 @@ async def ask_question(item: ChatQuery, request: Request):
 async def health_check():
     return {
         "status": "online",
-        "provider": "ollama-local",
+        "provider": "ollama-local-predictive",
         "llm_model": OLLAMA_LLM_MODEL,
-        "embedding_model": OLLAMA_EMBED_MODEL,
         "ollama_base_url": OLLAMA_BASE_URL,
-        "chroma_path": CHROMA_PATH,
         "csv_path": CSV_PATH,
         "model_path": MODEL_PATH,
+        "known_districts": known_districts,
     }
 
 
