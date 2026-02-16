@@ -72,7 +72,7 @@
   },
   "chatbot": {
     "title": "Grid AI Assistant",
-    "subtitle": "Context-aware RAG support",
+    "subtitle": "Bot",
     "welcome": "Grid Assistant online. Ask about risks, district stress, or mitigation actions. I already see your current simulation state.",
     "placeholder": "Ask about overload risk or action plan...",
     "openAria": "Open AI assistant",

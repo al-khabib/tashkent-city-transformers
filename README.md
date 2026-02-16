@@ -1,102 +1,46 @@
-# Tashkent Grid Commander (React + FastAPI RAG)
+# Tashkent Grid Commander (Local Predictive Backend + React UI)
 
-Executive dashboard for monitoring transformer risk in Tashkent, with:
+This project runs a React dashboard with a local FastAPI backend that predicts district grid load and returns Mayor-friendly risk summaries.
 
-- Interactive Leaflet map UI (React + Vite + Tailwind)
-- Stress simulation controls (temperature, urban growth)
-- Analytics + chatbot assistant
-- RAG backend (FastAPI + Chroma + FastEmbed embeddings + Groq LLM)
+Current backend mode is **prediction-focused** (law RAG is not used in runtime flow).
 
 ---
 
-## 1) Tech Stack
+## What Runs Where
 
-### Frontend
-
-- React 18 + Vite
-- Tailwind CSS
-- React Leaflet / Leaflet
-- Recharts, framer-motion, lucide-react
-- i18next (UZ/RU/EN UI)
-
-### Backend
-
-- FastAPI + Uvicorn/Gunicorn
-- LangChain + RetrievalQA
-- Chroma vector store (`./chroma_db`)
-- FastEmbed embeddings (`BAAI/bge-small-en-v1.5`)
-- Groq LLM (`llama3-8b-8192` by default)
+- Frontend: Vite/React at `http://localhost:5173`
+- Backend: FastAPI at `http://127.0.0.1:8000`
+- Local LLM + parsing/translation: Ollama (`llama3.1:8b`)
+- ML prediction model: `RandomForestRegressor` loaded from `.joblib`
 
 ---
 
-## 2) Project Structure
+## Prerequisites
 
-```text
-.
-├── src/                    # React app
-├── data/                   # PDF legal documents for ingestion
-├── chroma_db/              # Generated vector DB (created by ingest.py)
-├── ingest.py               # Builds Chroma DB from PDFs
-├── main.py                 # FastAPI backend
-├── requirements.txt        # Backend dependencies
-└── package.json            # Frontend dependencies/scripts
-```
-
----
-
-## 3) Prerequisites
-
-Install:
-
-- Node.js 18+ and npm
+- Node.js 18+
 - Python 3.10+ (3.11 recommended)
+- Ollama installed and running
 
-Check versions:
+Check:
 
 ```bash
 node -v
 npm -v
 python3 --version
+ollama --version
 ```
 
 ---
 
-## 4) Environment Variables
+## 1) Install Dependencies
 
-Create backend env file:
-
-`server/.env` (or root `.env`)
-
-```env
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=llama3-8b-8192
-ALLOWED_ORIGINS=http://localhost:5173
-```
-
-Optional frontend env (`.env.local`):
-
-```env
-VITE_API_URL=http://localhost:8000
-VITE_API_TIMEOUT_MS=90000
-VITE_DEBUG_FLOW=true
-```
-
-Notes:
-
-- `GROQ_API_KEY` is required.
-- Keep `.env` files out of git.
-
----
-
-## 5) Local Setup
-
-### A. Install frontend dependencies
+### Frontend
 
 ```bash
 npm install
 ```
 
-### B. Install backend dependencies
+### Backend
 
 ```bash
 python3 -m venv .venv
@@ -104,43 +48,97 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### C. Add legal PDFs
+---
 
-Place your source PDFs in:
+## 2) Prepare Ollama Models
 
-```text
-./data
-```
-
-### D. Build vector database (required for RAG)
+Pull required local models:
 
 ```bash
-python ingest.py
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
 ```
 
-Expected output includes:
+Start Ollama (if not already running):
 
-- number of loaded PDFs
-- number of indexed chunks
-- `chroma_db` path
+```bash
+ollama serve
+```
 
-### E. Start backend API
+---
+
+## 3) Prepare Prediction Artifacts
+
+Backend requires:
+
+- CSV: `tashkent_grid_historic_data.csv`
+- Model: `grid_load_rf.joblib`
+
+If you already have them (for example in `model/`), skip generation and set env paths (section 4).
+
+If you need to generate/train from scratch:
+
+```bash
+python generate_mock_data.py
+python train_model.py
+```
+
+This creates:
+- `tashkent_grid_historic_data.csv`
+- `grid_load_rf.joblib`
+
+---
+
+## 4) Environment Variables
+
+Create `server/.env` (or root `.env`):
+
+```env
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_LLM_MODEL=llama3.1:8b
+OLLAMA_EMBED_MODEL=nomic-embed-text
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+GRID_DATA_CSV=tashkent_grid_historic_data.csv
+GRID_MODEL_PATH=grid_load_rf.joblib
+```
+
+If your files are inside `model/`, use:
+
+```env
+GRID_DATA_CSV=model/tashkent_grid_historic_data.csv
+GRID_MODEL_PATH=model/grid_load_rf.joblib
+```
+
+Optional frontend env (`.env.local`):
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+VITE_API_TIMEOUT_MS=90000
+VITE_DEBUG_FLOW=true
+```
+
+---
+
+## 5) Start Backend
 
 ```bash
 python main.py
 ```
 
-Backend runs on:
-
-- `http://localhost:8000`
-
 Health check:
 
 ```bash
-curl http://localhost:8000/health
+curl http://127.0.0.1:8000/health
 ```
 
-### F. Start frontend
+You should see JSON with:
+- `provider: ollama-local-predictive`
+- valid `csv_path`
+- valid `model_path`
+
+---
+
+## 6) Start Frontend
 
 In another terminal:
 
@@ -148,98 +146,81 @@ In another terminal:
 npm run dev
 ```
 
-Frontend runs on:
-
+Open:
 - `http://localhost:5173`
 
 ---
 
-## 6) Test End-to-End
+## 7) End-to-End Testing
 
-Quick backend test:
+### A) Deterministic prediction endpoint
 
 ```bash
-curl -X POST http://localhost:8000/ask \
+curl -X POST http://127.0.0.1:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{"query":"Elektr xavfsizligi bo‘yicha asosiy talablar nima?"}'
+  -d '{"district":"sergeli","target_date":"2027-01-01"}'
+```
+
+Expected keys:
+- `mode: "prediction"`
+- `prediction.risk_score`
+- `prediction.transformers_needed`
+
+### B) Chat endpoint (same pipeline used by UI chatbot)
+
+```bash
+curl -X POST http://127.0.0.1:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Predict grid load for Sergeli by 2027-01-01"}'
 ```
 
 Expected:
+- `mode: "prediction"`
+- `answer` (human-friendly summary)
+- `prediction` (structured numbers)
 
-- JSON with `answer`
-- no timeout in frontend console
+### C) UI Chat test prompts
+
+- `Predict grid load for Sergeli district by 2027-01-01 and tell me risk score and transformers needed.`
+- `Sergeli tumani uchun 2027-01-01 holatiga yuklama prognozini bering.`
+- `Сделай прогноз нагрузки для Чиланзара на 2027-12-01.`
 
 ---
 
-## 7) Common Issues & Fixes
+## 8) Common Issues
 
-### 1) `GROQ_API_KEY is not set`
+### `District stats CSV not found` / `Pre-trained model not found`
+- Check `GRID_DATA_CSV` and `GRID_MODEL_PATH` in `server/.env`.
+- Use relative paths from project root, e.g. `model/grid_load_rf.joblib`.
 
-- Ensure `server/.env` (or root `.env`) contains `GROQ_API_KEY`.
-- Restart backend after env changes.
+### Chat timeout
+- Ollama may be cold on first request.
+- Increase `VITE_API_TIMEOUT_MS` in `.env.local` (e.g. `120000`).
 
-### 2) Chat timeout (e.g. `Timeout: 90s`)
-
-- Increase `VITE_API_TIMEOUT_MS`.
-- First request can be slower than subsequent ones.
-- Check backend logs with request ID from chat.
-
-### 3) Empty/weak RAG answers
-
-- Re-run ingestion after changing PDFs:
+### Backend starts but responses fail
+- Confirm Ollama is running and model exists:
   ```bash
-  python ingest.py
-  ```
-- Confirm `chroma_db` exists and has been regenerated.
-
-### 4) CORS errors
-
-- Set `ALLOWED_ORIGINS` correctly (for local use `http://localhost:5173`).
-
-### 5) Memory pressure on small machines/instances
-
-- Current config already uses lightweight embeddings (`fastembed`) and small chunking.
-
----
-
-## 8) Useful Commands
-
-```bash
-# Frontend production build
-npm run build
-
-# Compile-check backend scripts
-python3 -m compileall main.py ingest.py
-
-# Re-index documents after updating data
-python ingest.py
-```
-
----
-
-## 9) Security Notes
-
-- Never commit real API keys.
-- Rotate keys immediately if exposed.
-- Keep `.env`, `server/.env` private.
-
----
-
-## 10) Deployment Notes (Optional)
-
-For Render:
-
-- Build command:
-  ```bash
-  pip install -r requirements.txt && python ingest.py
-  ```
-- Start command:
-  ```bash
-  gunicorn -w 1 -t 120 -k uvicorn.workers.UvicornWorker main:app
+  ollama list
   ```
 
-For Netlify frontend:
+### CORS error in browser
+- Ensure `ALLOWED_ORIGINS` includes `http://localhost:5173`.
 
-- Set:
-  - `VITE_API_URL=https://<your-render-domain>`
-  - optional `VITE_API_TIMEOUT_MS=90000`
+---
+
+## 9) Developer Notes
+
+- `ingest.py` exists for document indexing, but prediction runtime does not require it.
+- `text.py` is a helper script for manual API ping tests.
+- Main runtime entrypoints:
+  - Backend: `main.py`
+  - Frontend: `src/components/Chatbot.jsx`, `src/App.jsx`
+
+---
+
+## 10) Security
+
+- Never commit real secrets.
+- Keep `.env` files private.
+- Rotate API keys immediately if exposed.
+
