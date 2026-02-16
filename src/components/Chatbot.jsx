@@ -88,7 +88,7 @@ TypingDots.propTypes = {
   label: PropTypes.string.isRequired,
 };
 
-function Chatbot({ temperature, construction, selectedTransformerId }) {
+function Chatbot({ temperature, construction, selectedTransformerId, futureMode, futureDate, futureSummary }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -121,9 +121,12 @@ function Chatbot({ temperature, construction, selectedTransformerId }) {
       temperature,
       construction,
       selectedTransformerId: selectedTransformerId || null,
+      futureMode: Boolean(futureMode),
+      futureDate: futureDate || null,
+      futureSummary: futureSummary || null,
       timestamp: new Date().toISOString(),
     }),
-    [temperature, construction, selectedTransformerId]
+    [temperature, construction, selectedTransformerId, futureMode, futureDate, futureSummary]
   );
 
   const sendMessage = async () => {
@@ -409,10 +412,16 @@ Chatbot.propTypes = {
   temperature: PropTypes.number.isRequired,
   construction: PropTypes.number.isRequired,
   selectedTransformerId: PropTypes.string,
+  futureMode: PropTypes.bool,
+  futureDate: PropTypes.string,
+  futureSummary: PropTypes.object,
 };
 
 Chatbot.defaultProps = {
   selectedTransformerId: null,
+  futureMode: false,
+  futureDate: null,
+  futureSummary: null,
 };
 
 export default Chatbot;

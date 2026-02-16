@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Any, Dict, Optional
 
 import joblib
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -16,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from langchain_community.llms import Ollama
 from pydantic import BaseModel
+from sklearn.cluster import KMeans
 
 
 logger = logging.getLogger("grid-backend")
@@ -104,6 +106,7 @@ district_df = pd.read_csv(CSV_PATH)
 district_df["district"] = district_df["district"].str.strip().str.lower()
 model = joblib.load(MODEL_PATH)
 known_districts = sorted(district_df["district"].dropna().unique().tolist())
+global_future_state: Dict[str, Any] = {}
 
 app = FastAPI(title="Tashkent Local Predictive RAG API")
 
@@ -141,6 +144,17 @@ llm = Ollama(
     temperature=0.2,
 )
 
+DISTRICT_CENTERS = {
+    "yunusabad": [41.3650, 69.2890],
+    "chilonzor": [41.2850, 69.2030],
+    "mirzo ulugbek": [41.3250, 69.3450],
+    "sergeli": [41.2300, 69.2280],
+    "shaykhontohur": [41.3250, 69.2450],
+    "olmazor": [41.3560, 69.2320],
+    "yakkasaroy": [41.2940, 69.2550],
+    "bektemir": [41.2360, 69.3350],
+}
+
 
 def predict_grid_load(district: str, target_date: str) -> Dict[str, Any]:
     district_key = district.strip().lower()
@@ -166,9 +180,11 @@ def predict_grid_load(district: str, target_date: str) -> Dict[str, Any]:
     current_capacity = float(current["current_capacity_mw"])
     load_gap = predicted_load - current_capacity
     utilization = predicted_load / max(current_capacity, 1e-6)
+    load_percentage = utilization * 100
     risk_score = max(1, min(10, math.ceil(utilization * 8)))
     if load_gap > 0:
         risk_score = min(10, risk_score + 1)
+    risk_level = "Low" if risk_score <= 4 else "Medium" if risk_score <= 7 else "High"
 
     tp_capacity_mw = float(current.get("avg_tp_capacity_mw", 2.5))
     tps_needed = max(0, math.ceil(load_gap / max(tp_capacity_mw, 0.1)))
@@ -180,8 +196,18 @@ def predict_grid_load(district: str, target_date: str) -> Dict[str, Any]:
         "predicted_load_mw": round(predicted_load, 2),
         "current_capacity_mw": round(current_capacity, 2),
         "load_gap_mw": round(load_gap, 2),
+        "load_percentage": round(load_percentage, 2),
+        "risk_level": risk_level,
         "risk_score": int(risk_score),
         "transformers_needed": int(tps_needed),
+        "affecting_factors": {
+            "district_rating": float(current["district_rating"]),
+            "population_density": float(current["population_density"]),
+            "avg_temp": float(current["avg_temp"]),
+            "asset_age": float(current["asset_age"]),
+            "commercial_infra_count": float(current["commercial_infra_count"]),
+            "months_ahead": months_ahead,
+        },
     }
 
 
@@ -257,18 +283,71 @@ class ChatQuery(BaseModel):
 
 
 class PredictRequest(BaseModel):
-    district: str
     target_date: str
+
+
+def _make_suggested_tp_points(district: str, transformers_needed: int, overload_scale: float) -> list[Dict[str, Any]]:
+    if transformers_needed <= 0:
+        return []
+    center = DISTRICT_CENTERS.get(district, [41.3111, 69.2797])
+    sample_count = max(10, transformers_needed * 8)
+    jitter = 0.007 + min(0.02, overload_scale / 1000)
+    points = np.column_stack(
+        [
+            np.random.normal(center[0], jitter, sample_count),
+            np.random.normal(center[1], jitter, sample_count),
+        ]
+    )
+    cluster_count = min(transformers_needed, len(points))
+    if cluster_count <= 0:
+        return []
+    kmeans = KMeans(n_clusters=cluster_count, random_state=42, n_init=10)
+    kmeans.fit(points)
+    centers = kmeans.cluster_centers_
+    return [
+        {
+            "id": f"{district}-tp-{index}",
+            "district": district,
+            "coordinates": [round(value[0], 6), round(value[1], 6)],
+        }
+        for index, value in enumerate(centers.tolist(), start=1)
+    ]
 
 
 @app.post("/predict")
 async def predict_endpoint(item: PredictRequest, request: Request):
     try:
-        prediction = predict_grid_load(item.district, item.target_date)
+        district_predictions = []
+        suggested_tps = []
+        for district in known_districts:
+            prediction = predict_grid_load(district, item.target_date)
+            district_predictions.append(prediction)
+            if prediction["predicted_load_mw"] > prediction["current_capacity_mw"]:
+                suggested_tps.extend(
+                    _make_suggested_tp_points(
+                        district,
+                        prediction["transformers_needed"],
+                        max(0.0, prediction["load_gap_mw"]),
+                    )
+                )
+
+        global global_future_state
+        global_future_state = {
+            "target_date": item.target_date,
+            "generated_at": datetime.utcnow().isoformat(),
+            "district_predictions": district_predictions,
+            "suggested_tps": suggested_tps,
+            "total_transformers_needed": int(
+                sum(entry["transformers_needed"] for entry in district_predictions)
+            ),
+        }
         return {
             "request_id": request.state.request_id,
             "mode": "prediction",
-            "prediction": prediction,
+            "target_date": item.target_date,
+            "district_predictions": district_predictions,
+            "suggested_tps": suggested_tps,
+            "total_transformers_needed": global_future_state["total_transformers_needed"],
         }
     except Exception as error:
         logger.exception("predict_endpoint failed")
@@ -288,16 +367,30 @@ async def ask_question(item: ChatQuery, request: Request):
         user_language = _detect_language_fast(query)
         query_en = translate_to_english(query, user_language)
 
-        params = extract_prediction_params(query_en)
-        prediction = predict_grid_load(params["district"], params["target_date"])
-        answer_en = explain_prediction_for_mayor(query_en, prediction)
+        future_context = (
+            json.dumps(global_future_state, ensure_ascii=True)
+            if global_future_state
+            else "No future mode prediction has been generated yet."
+        )
+        answer_en = str(
+            llm.invoke(
+                "You are now synced with the Map Future Mode.\n"
+                "When a date is selected, provide a detailed breakdown of the ML model results: "
+                "affecting factors, expected load, and risk level.\n"
+                "You must explain why pulse-glow suggested TP icons appear on map.\n"
+                "Use clear bullets and mention district names.\n\n"
+                f"Future mode state: {future_context}\n"
+                f"User question: {query_en}\n"
+                "Respond with practical guidance for the Mayor."
+            )
+        ).strip()
         answer = translate_from_english(answer_en, user_language)
         return {
             "answer": answer,
             "request_id": request.state.request_id,
-            "mode": "prediction",
+            "mode": "future_chat",
             "user_language": user_language,
-            "prediction": prediction,
+            "future_state": global_future_state,
         }
     except HTTPException:
         raise
@@ -319,6 +412,7 @@ async def health_check():
         "csv_path": CSV_PATH,
         "model_path": MODEL_PATH,
         "known_districts": known_districts,
+        "future_state_loaded": bool(global_future_state),
     }
 
 

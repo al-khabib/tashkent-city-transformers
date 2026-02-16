@@ -4,8 +4,13 @@ import Sidebar from './components/Sidebar.jsx';
 import ControlPanel from './components/ControlPanel.jsx';
 import AnalyticsModal from './components/AnalyticsModal.jsx';
 import Chatbot from './components/Chatbot.jsx';
+import TimeControlPanel from './components/TimeControlPanel.jsx';
 import transformerSubstations from './data/mockData.js';
 import { useGridStress } from './hooks/useGridStress.js';
+
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+).replace(/\/+$/, '');
 
 function App() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -15,6 +20,10 @@ function App() {
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
   const [analyticsId, setAnalyticsId] = useState(null);
+  const [futureMode, setFutureMode] = useState(false);
+  const [futureDate, setFutureDate] = useState(null);
+  const [futureData, setFutureData] = useState(null);
+  const [futureLoading, setFutureLoading] = useState(false);
   const mapRef = useRef(null);
 
   const {
@@ -41,6 +50,41 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    if (!futureMode || !futureDate) {
+      setFutureData(null);
+      return;
+    }
+    const controller = new AbortController();
+    const runPrediction = async () => {
+      setFutureLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            target_date: futureDate.toISOString().slice(0, 10),
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`Future mode request failed: ${response.status}`);
+        }
+        const payload = await response.json();
+        setFutureData(payload);
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          console.error('[FutureMode] prediction failed', error);
+          setFutureData(null);
+        }
+      } finally {
+        setFutureLoading(false);
+      }
+    };
+    runPrediction();
+    return () => controller.abort();
+  }, [futureMode, futureDate]);
 
   const modalStation = useMemo(
     () => stations.find((station) => station.id === analyticsId) || null,
@@ -81,14 +125,24 @@ function App() {
 
       <div className="relative flex-1">
         {!isDesktop && <ControlPanel onToggle={() => setSidebarOpen(true)} />}
+        <TimeControlPanel
+          futureMode={futureMode}
+          onFutureModeChange={setFutureMode}
+          futureDate={futureDate}
+          onFutureDateChange={setFutureDate}
+          loading={futureLoading}
+        />
 
         <MapView
           stations={filteredStations}
+          allStations={stations}
           selectedId={selectedId}
           onStationSelect={flyToStation}
           onRequestAnalytics={(station) => setAnalyticsId(station.id)}
           onMapReady={handleMapReady}
           showHighGrowthZones={false}
+          futureMode={futureMode}
+          futurePrediction={futureData}
         />
       </div>
 
@@ -122,6 +176,9 @@ function App() {
         temperature={temperature}
         construction={construction}
         selectedTransformerId={selectedId}
+        futureMode={futureMode}
+        futureDate={futureDate ? futureDate.toISOString().slice(0, 10) : null}
+        futureSummary={futureData}
       />
     </div>
   );

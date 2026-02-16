@@ -1,7 +1,7 @@
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Polygon, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Polygon, Tooltip, GeoJSON } from 'react-leaflet';
 import L from 'leaflet';
 import PropTypes from 'prop-types';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const INITIAL_CENTER = [41.3111, 69.2797];
@@ -56,10 +56,10 @@ const loadToColor = (percent) => {
   return '#94a3b8';
 };
 
-const createMarkerIcon = (color, label, scale, isFocused) => {
-  const size = 28 * scale;
+const createCurrentTpIcon = (color, scale, isFocused) => {
+  const size = 30 * scale;
   return L.divIcon({
-    html: `<span class="grid-marker ${isFocused ? 'ring ring-offset-2 ring-sky-400 ring-offset-slate-900' : ''}" style="background:${color};width:${size}px;height:${size}px;">${label}</span>`,
+    html: `<span class="grid-marker ${isFocused ? 'ring ring-offset-2 ring-sky-400 ring-offset-slate-900' : ''}" style="background:${color};width:${size}px;height:${size}px;"><span class="grid-zap">⚡</span></span>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size - 6],
     popupAnchor: [0, -18],
@@ -67,15 +67,75 @@ const createMarkerIcon = (color, label, scale, isFocused) => {
   });
 };
 
+const createSuggestedTpIcon = () =>
+  L.divIcon({
+    html: '<span class="grid-marker suggested-marker pulse-glow"><span class="grid-suggested-symbol">✚</span></span>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 24],
+    popupAnchor: [0, -18],
+    className: '',
+  });
+
+const buildDistrictGeoJson = (stations, districtPredictionMap) => {
+  if (!stations?.length) return { type: 'FeatureCollection', features: [] };
+  const grouped = stations.reduce((acc, station) => {
+    const key = station.district?.toLowerCase();
+    if (!key) return acc;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(station.coordinates);
+    return acc;
+  }, {});
+
+  const features = Object.entries(grouped).map(([district, points]) => {
+    const lats = points.map((item) => item[0]);
+    const lngs = points.map((item) => item[1]);
+    const minLat = Math.min(...lats) - 0.015;
+    const maxLat = Math.max(...lats) + 0.015;
+    const minLng = Math.min(...lngs) - 0.015;
+    const maxLng = Math.max(...lngs) + 0.015;
+    const prediction = districtPredictionMap.get(district);
+    return {
+      type: 'Feature',
+      properties: {
+        district,
+        load_percentage: prediction?.load_percentage ?? null,
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [minLng, minLat],
+            [maxLng, minLat],
+            [maxLng, maxLat],
+            [minLng, maxLat],
+            [minLng, minLat],
+          ],
+        ],
+      },
+    };
+  });
+
+  return { type: 'FeatureCollection', features };
+};
+
 function MapView({
   stations,
+  allStations,
   selectedId,
   onStationSelect,
   onRequestAnalytics,
   onMapReady,
   showHighGrowthZones,
+  futureMode,
+  futurePrediction,
 }) {
   const { t } = useTranslation();
+  const districtPredictionMap = new Map(
+    (futurePrediction?.district_predictions || []).map((item) => [String(item.district).toLowerCase(), item])
+  );
+  const districtGeoJson = buildDistrictGeoJson(allStations || stations, districtPredictionMap);
+  const suggestedTpIcon = createSuggestedTpIcon();
+  const futureSuggestions = futurePrediction?.suggested_tps || [];
 
   const getRiskLabel = (riskLabel) => {
     const normalized = (riskLabel || '').toLowerCase();
@@ -97,6 +157,29 @@ function MapView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {futureMode && (
+        <GeoJSON
+          data={districtGeoJson}
+          style={(feature) => {
+            const load = feature?.properties?.load_percentage;
+            const color = load == null ? '#64748b' : load > 90 ? '#ef4444' : load >= 70 ? '#facc15' : '#22c55e';
+            return {
+              color,
+              fillColor: color,
+              fillOpacity: 0.22,
+              weight: 1.4,
+            };
+          }}
+          onEachFeature={(feature, layer) => {
+            const district = feature?.properties?.district || 'unknown';
+            const load = feature?.properties?.load_percentage;
+            layer.bindTooltip(
+              `${district.toUpperCase()} • ${load == null ? 'N/A' : `${Math.round(load)}%`}`,
+              { sticky: true }
+            );
+          }}
+        />
+      )}
 
       {showHighGrowthZones &&
         HIGH_GROWTH_ZONES.map((zone) => (
@@ -118,9 +201,8 @@ function MapView({
         <Marker
           key={station.id}
           position={station.coordinates}
-          icon={createMarkerIcon(
+          icon={createCurrentTpIcon(
             selectedId === station.id ? '#38bdf8' : loadToColor(station.projectedPercent),
-            Math.round(station.projectedPercent),
             station.markerScale || 1,
             selectedId === station.id
           )}
@@ -135,6 +217,10 @@ function MapView({
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{t('map.transformer')}</p>
               <h3 className="mt-1 text-lg font-semibold text-slate-100">{station.name}</h3>
               <p className="text-xs text-slate-400">{station.district}</p>
+              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800/60 px-2 py-1 text-[11px] text-cyan-200">
+                <Zap className="h-3 w-3" />
+                Existing TP
+              </div>
 
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between">
@@ -180,6 +266,19 @@ function MapView({
           </Popup>
         </Marker>
       ))}
+
+      {futureMode &&
+        futureSuggestions.map((point) => (
+          <Marker key={point.id} position={point.coordinates} icon={suggestedTpIcon}>
+            <Popup className="bg-transparent" minWidth={260} maxWidth={300}>
+              <div className="rounded-2xl border border-amber-500/50 bg-slate-900/95 p-4 text-slate-100 shadow-xl backdrop-blur">
+                <p className="text-xs uppercase tracking-[0.3em] text-amber-300">Suggested TP</p>
+                <p className="mt-1 text-sm font-semibold text-slate-100">{point.district}</p>
+                <p className="text-xs text-slate-400">Future Mode placement recommendation</p>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
     </MapContainer>
   );
 }
@@ -211,19 +310,44 @@ MapView.propTypes = {
       ),
     })
   ).isRequired,
+  allStations: PropTypes.arrayOf(
+    PropTypes.shape({
+      district: PropTypes.string.isRequired,
+      coordinates: PropTypes.arrayOf(PropTypes.number).isRequired,
+    })
+  ),
   selectedId: PropTypes.string,
   onStationSelect: PropTypes.func,
   onRequestAnalytics: PropTypes.func,
   onMapReady: PropTypes.func,
   showHighGrowthZones: PropTypes.bool,
+  futureMode: PropTypes.bool,
+  futurePrediction: PropTypes.shape({
+    district_predictions: PropTypes.arrayOf(
+      PropTypes.shape({
+        district: PropTypes.string,
+        load_percentage: PropTypes.number,
+      })
+    ),
+    suggested_tps: PropTypes.arrayOf(
+      PropTypes.shape({
+        id: PropTypes.string,
+        district: PropTypes.string,
+        coordinates: PropTypes.arrayOf(PropTypes.number),
+      })
+    ),
+  }),
 };
 
 MapView.defaultProps = {
+  allStations: undefined,
   selectedId: null,
   onStationSelect: undefined,
   onRequestAnalytics: undefined,
   onMapReady: undefined,
   showHighGrowthZones: false,
+  futureMode: false,
+  futurePrediction: null,
 };
 
 export default MapView;
