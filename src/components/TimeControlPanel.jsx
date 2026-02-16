@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import DatePicker from 'react-datepicker'
 import { CalendarClock, Clock3 } from 'lucide-react'
-import { format } from 'date-fns'
+import { addMonths, addYears, format } from 'date-fns'
 
 function TimeControlPanel({
   futureMode,
@@ -10,6 +10,18 @@ function TimeControlPanel({
   onFutureDateChange,
   loading
 }) {
+  const applyQuickDate = offset => {
+    const now = new Date()
+    const nextDate =
+      offset.type === 'months'
+        ? addMonths(now, offset.value)
+        : addYears(now, offset.value)
+    if (!futureMode) {
+      onFutureModeChange(true)
+    }
+    onFutureDateChange(nextDate)
+  }
+
   return (
     <div className='pointer-events-auto absolute right-4 top-4 z-[1000] w-[320px] rounded-2xl border border-slate-700/80 bg-slate-900/50 p-4 shadow-2xl backdrop-blur-xl'>
       <div className='flex items-center justify-between'>
@@ -70,6 +82,44 @@ function TimeControlPanel({
           <span>Showing current transformer state.</span>
         )}
       </div>
+
+      {futureMode && (
+        <div className='mt-3 border-t border-slate-700/70 pt-3'>
+          <p className='mb-2 text-[11px] uppercase tracking-[0.2em] text-slate-400'>
+            Quick Future Dates
+          </p>
+          <div className='grid grid-cols-2 gap-2'>
+            <button
+              type='button'
+              onClick={() => applyQuickDate({ type: 'months', value: 3 })}
+              className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
+            >
+              +3 Months
+            </button>
+            <button
+              type='button'
+              onClick={() => applyQuickDate({ type: 'months', value: 6 })}
+              className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
+            >
+              +6 Months
+            </button>
+            <button
+              type='button'
+              onClick={() => applyQuickDate({ type: 'years', value: 1 })}
+              className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
+            >
+              +1 Year
+            </button>
+            <button
+              type='button'
+              onClick={() => applyQuickDate({ type: 'years', value: 3 })}
+              className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
+            >
+              +3 Years
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

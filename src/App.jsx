@@ -25,6 +25,10 @@ function App() {
   const [futureData, setFutureData] = useState(null);
   const [futureLoading, setFutureLoading] = useState(false);
   const mapRef = useRef(null);
+  const futureDateKey = useMemo(
+    () => (futureDate ? futureDate.toISOString().slice(0, 10) : null),
+    [futureDate]
+  );
 
   const {
     stations,
@@ -52,7 +56,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!futureMode || !futureDate) {
+    if (!futureMode || !futureDateKey) {
       setFutureData(null);
       return;
     }
@@ -65,7 +69,7 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
-            target_date: futureDate.toISOString().slice(0, 10),
+            target_date: futureDateKey,
           }),
         });
         if (!response.ok) {
@@ -84,7 +88,15 @@ function App() {
     };
     runPrediction();
     return () => controller.abort();
-  }, [futureMode, futureDate]);
+  }, [futureMode, futureDateKey]);
+
+  const handleFutureDateChange = (nextDate) => {
+    if (!nextDate) return;
+    if (!futureMode) {
+      setFutureMode(true);
+    }
+    setFutureDate(nextDate);
+  };
 
   const modalStation = useMemo(
     () => stations.find((station) => station.id === analyticsId) || null,
@@ -129,7 +141,7 @@ function App() {
           futureMode={futureMode}
           onFutureModeChange={setFutureMode}
           futureDate={futureDate}
-          onFutureDateChange={setFutureDate}
+          onFutureDateChange={handleFutureDateChange}
           loading={futureLoading}
         />
 
@@ -177,7 +189,7 @@ function App() {
         construction={construction}
         selectedTransformerId={selectedId}
         futureMode={futureMode}
-        futureDate={futureDate ? futureDate.toISOString().slice(0, 10) : null}
+        futureDate={futureDateKey}
         futureSummary={futureData}
       />
     </div>

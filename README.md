@@ -84,6 +84,7 @@ python train_model.py
 ```
 
 This creates:
+
 - `tashkent_grid_historic_data.csv`
 - `grid_load_rf.joblib`
 
@@ -113,7 +114,7 @@ Optional frontend env (`.env.local`):
 
 ```env
 VITE_API_URL=http://127.0.0.1:8000
-VITE_API_TIMEOUT_MS=90000
+VITE_API_TIMEOUT_MS=180000
 VITE_DEBUG_FLOW=true
 ```
 
@@ -132,6 +133,7 @@ curl http://127.0.0.1:8000/health
 ```
 
 You should see JSON with:
+
 - `provider: ollama-local-predictive`
 - valid `csv_path`
 - valid `model_path`
@@ -147,6 +149,7 @@ npm run dev
 ```
 
 Open:
+
 - `http://localhost:5173`
 
 ---
@@ -162,6 +165,7 @@ curl -X POST http://127.0.0.1:8000/predict \
 ```
 
 Expected keys:
+
 - `mode: "prediction"`
 - `prediction.risk_score`
 - `prediction.transformers_needed`
@@ -175,6 +179,7 @@ curl -X POST http://127.0.0.1:8000/ask \
 ```
 
 Expected:
+
 - `mode: "prediction"`
 - `answer` (human-friendly summary)
 - `prediction` (structured numbers)
@@ -190,20 +195,24 @@ Expected:
 ## 8) Common Issues
 
 ### `District stats CSV not found` / `Pre-trained model not found`
+
 - Check `GRID_DATA_CSV` and `GRID_MODEL_PATH` in `server/.env`.
 - Use relative paths from project root, e.g. `model/grid_load_rf.joblib`.
 
 ### Chat timeout
+
 - Ollama may be cold on first request.
 - Increase `VITE_API_TIMEOUT_MS` in `.env.local` (e.g. `120000`).
 
 ### Backend starts but responses fail
+
 - Confirm Ollama is running and model exists:
   ```bash
   ollama list
   ```
 
 ### CORS error in browser
+
 - Ensure `ALLOWED_ORIGINS` includes `http://localhost:5173`.
 
 ---
@@ -223,4 +232,3 @@ Expected:
 - Never commit real secrets.
 - Keep `.env` files private.
 - Rotate API keys immediately if exposed.
-
