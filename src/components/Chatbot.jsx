@@ -89,7 +89,7 @@ TypingDots.propTypes = {
 };
 
 function Chatbot({ temperature, construction, selectedTransformerId, futureMode, futureDate, futureSummary }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -103,6 +103,7 @@ function Chatbot({ temperature, construction, selectedTransformerId, futureMode,
     },
   ]);
   const messagesEndRef = useRef(null);
+  const lastAutoReportKeyRef = useRef('');
 
   useEffect(() => {
     setMessages((prev) =>
@@ -129,18 +130,31 @@ function Chatbot({ temperature, construction, selectedTransformerId, futureMode,
     [temperature, construction, selectedTransformerId, futureMode, futureDate, futureSummary]
   );
 
-  const sendMessage = async () => {
-    const trimmed = input.trim();
+  const buildAutoFuturePrompt = () => {
+    const lang = i18n.resolvedLanguage;
+    if (lang === 'uz') {
+      return `Iltimos ${futureDate} uchun Future Mode bo'yicha to'liq tumanlar kesimida hisobot bering: har bir tuman uchun predicted_load_mw, current_capacity_mw, load_percentage, risk_level, transformers_needed va barcha affecting_factors (district_rating, population_density, avg_temp, asset_age, commercial_infra_count, months_ahead). Yakunda eng kritik 3 tumanni va nima uchun pulse-glow suggested TP ikonlari chiqqanini tushuntiring.`;
+    }
+    if (lang === 'ru') {
+      return `Пожалуйста, дай полный отчет Future Mode на дату ${futureDate}: по каждому району укажи predicted_load_mw, current_capacity_mw, load_percentage, risk_level, transformers_needed и все affecting_factors (district_rating, population_density, avg_temp, asset_age, commercial_infra_count, months_ahead). В конце выдели 3 самых критичных района и объясни, почему появились pulse-glow suggested TP иконки.`;
+    }
+    return `Please provide a full Future Mode report for ${futureDate}: for each district include predicted_load_mw, current_capacity_mw, load_percentage, risk_level, transformers_needed, and all affecting_factors (district_rating, population_density, avg_temp, asset_age, commercial_infra_count, months_ahead). Finish with top 3 critical districts and explain why pulse-glow suggested TP icons were generated.`;
+  };
+
+  const sendMessage = async (providedText = null, options = {}) => {
+    const trimmed = (providedText ?? input).trim();
     if (!trimmed || isLoading) return;
 
     const userMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: trimmed,
+      content: options.userLabel || trimmed,
       sources: [],
     };
     setMessages((prev) => [...prev, userMessage]);
-    setInput('');
+    if (!providedText) {
+      setInput('');
+    }
     setIsLoading(true);
 
     const requestId = createRequestId();
@@ -256,6 +270,21 @@ function Chatbot({ temperature, construction, selectedTransformerId, futureMode,
     event.preventDefault();
     await sendMessage();
   };
+
+  useEffect(() => {
+    const hasFuturePayload = futureSummary?.district_predictions?.length > 0;
+    if (!futureMode || !futureDate || !hasFuturePayload || isLoading) return;
+
+    const reportKey = `${futureDate}-${futureSummary?.request_id || futureSummary?.generated_at || 'na'}`;
+    if (lastAutoReportKeyRef.current === reportKey) return;
+    lastAutoReportKeyRef.current = reportKey;
+    setOpen(true);
+
+    const autoPrompt = buildAutoFuturePrompt();
+    void sendMessage(autoPrompt, {
+      userLabel: t('chatbot.autoReportUser', { date: futureDate }),
+    });
+  }, [futureMode, futureDate, futureSummary, isLoading, i18n.resolvedLanguage]);
 
   return (
     <div className="pointer-events-none fixed bottom-20 right-5 z-[1200] md:bottom-5">

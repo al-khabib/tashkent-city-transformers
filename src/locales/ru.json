@@ -80,6 +80,7 @@
     "typing": "Печатает...",
     "source": "Источник {{index}}",
     "noResponse": "Нет ответа.",
+    "autoReportUser": "Авто-запрос отчета на {{date}}",
     "prediction": {
       "district": "Район",
       "targetDate": "Целевая дата",

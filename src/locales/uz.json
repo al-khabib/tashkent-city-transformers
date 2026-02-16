@@ -80,6 +80,7 @@
     "typing": "Yozmoqda...",
     "source": "Manba {{index}}",
     "noResponse": "Javob mavjud emas.",
+    "autoReportUser": "{{date}} uchun avtomatik hisobot so'rovi",
     "prediction": {
       "district": "Tuman",
       "targetDate": "Maqsad sana",

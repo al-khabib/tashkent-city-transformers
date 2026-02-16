@@ -80,6 +80,7 @@
     "typing": "Typing...",
     "source": "Source {{index}}",
     "noResponse": "No response.",
+    "autoReportUser": "Auto-report request for {{date}}",
     "prediction": {
       "district": "District",
       "targetDate": "Target Date",
