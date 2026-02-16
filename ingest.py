@@ -3,7 +3,7 @@ import shutil
 
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFDirectoryLoader
-from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -21,7 +21,8 @@ def main() -> None:
     base_dir = os.path.dirname(__file__)
     data_dir = os.path.join(base_dir, "data")
     chroma_dir = os.path.join(base_dir, "chroma_db")
-    embedding_model = "BAAI/bge-small-en-v1.5"
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    embedding_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
     if not os.path.isdir(data_dir):
         raise FileNotFoundError(f"Data folder not found: {data_dir}")
@@ -31,13 +32,13 @@ def main() -> None:
     if not docs:
         raise RuntimeError(f"No PDF documents found in: {data_dir}")
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_documents(docs)
 
     if os.path.isdir(chroma_dir):
         shutil.rmtree(chroma_dir)
 
-    embeddings = FastEmbedEmbeddings(model_name=embedding_model)
+    embeddings = OllamaEmbeddings(model=embedding_model, base_url=ollama_base_url)
     db = Chroma.from_documents(chunks, embeddings, persist_directory=chroma_dir)
     if hasattr(db, "persist"):
         db.persist()

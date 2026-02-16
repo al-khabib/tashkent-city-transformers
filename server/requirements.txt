@@ -3,10 +3,11 @@ uvicorn
 langchain
 langchain-community
 langchain-classic
-langchain-groq
 chromadb
 python-dotenv
 gunicorn
-fastembed
 langchain-text-splitters
 pypdf
+pandas
+scikit-learn
+joblib
