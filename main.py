@@ -286,6 +286,49 @@ class PredictRequest(BaseModel):
     target_date: str
 
 
+def _district_factor_trends(district: str) -> Dict[str, float]:
+    rows = (
+        district_df[district_df["district"] == district]
+        .sort_values("snapshot_date")
+        .tail(24)
+    )
+    if len(rows) < 12:
+        return {"population_pct": 0.0, "commercial_pct": 0.0}
+    recent = rows.tail(12)
+    previous = rows.head(len(rows) - 12).tail(12)
+
+    def pct_change(new_val: float, old_val: float) -> float:
+        if abs(old_val) < 1e-6:
+            return 0.0
+        return ((new_val - old_val) / old_val) * 100
+
+    return {
+        "population_pct": round(
+            pct_change(
+                float(recent["population_density"].mean()),
+                float(previous["population_density"].mean()),
+            ),
+            1,
+        ),
+        "commercial_pct": round(
+            pct_change(
+                float(recent["commercial_infra_count"].mean()),
+                float(previous["commercial_infra_count"].mean()),
+            ),
+            1,
+        ),
+    }
+
+
+def _seasonal_pressure_note(target_date_iso: str) -> str:
+    month = datetime.strptime(target_date_iso, "%Y-%m-%d").month
+    if month in (6, 7, 8):
+        return "Summer cooling demand is expected to increase grid stress."
+    if month in (12, 1, 2):
+        return "Winter heating demand is expected to increase grid stress."
+    return "Baseline seasonal demand still contributes to elevated peak load."
+
+
 def _make_suggested_tp_points(district: str, transformers_needed: int, overload_scale: float) -> list[Dict[str, Any]]:
     if transformers_needed <= 0:
         return []
@@ -304,11 +347,14 @@ def _make_suggested_tp_points(district: str, transformers_needed: int, overload_
     kmeans = KMeans(n_clusters=cluster_count, random_state=42, n_init=10)
     kmeans.fit(points)
     centers = kmeans.cluster_centers_
+    label_counts = np.bincount(kmeans.labels_, minlength=cluster_count)
+    total_samples = max(1, int(label_counts.sum()))
     return [
         {
             "id": f"{district}-tp-{index}",
             "district": district,
             "coordinates": [round(value[0], 6), round(value[1], 6)],
+            "cluster_share_pct": round((label_counts[index - 1] / total_samples) * 100, 1),
         }
         for index, value in enumerate(centers.tolist(), start=1)
     ]
@@ -335,10 +381,12 @@ async def predict_endpoint(item: PredictRequest, request: Request):
         for point in suggested_tps:
             district_prediction = district_prediction_map.get(point["district"], {})
             affecting = district_prediction.get("affecting_factors", {})
+            district_trends = _district_factor_trends(point["district"])
             predicted_load = float(district_prediction.get("predicted_load_mw", 0))
             current_capacity = float(district_prediction.get("current_capacity_mw", 0))
             load_gap = float(district_prediction.get("load_gap_mw", 0))
             load_percentage = float(district_prediction.get("load_percentage", 0))
+            cluster_share_pct = float(point.get("cluster_share_pct", 0.0))
             point["target_date"] = district_prediction.get("target_date", item.target_date)
             point["expected_load_kw"] = round(predicted_load * 1000, 1)
             point["expected_load_mw"] = round(predicted_load, 2)
@@ -346,20 +394,34 @@ async def predict_endpoint(item: PredictRequest, request: Request):
             point["load_gap_mw"] = round(load_gap, 2)
             point["load_percentage"] = round(load_percentage, 2)
             point["transformers_needed"] = int(district_prediction.get("transformers_needed", 0))
+            point["cluster_load_gap_mw"] = round((cluster_share_pct / 100.0) * max(load_gap, 0.0), 2)
             point["why_summary"] = (
                 f"By {point['target_date']}, projected demand reaches {point['expected_load_mw']} MW "
                 f"against {point['current_capacity_mw']} MW capacity "
                 f"({point['load_percentage']}% utilization)."
             )
+            current_tp_count = max(1, int(round(current_capacity / max(float(district_df[district_df['district'] == point['district']].sort_values('snapshot_date').iloc[-1].get('avg_tp_capacity_mw', 2.5)), 0.1))))
+            overloaded_tp_count = min(
+                current_tp_count,
+                int(math.ceil((max(load_gap, 0.0) / max(current_capacity, 0.1)) * current_tp_count)),
+            )
             point["reasons"] = [
-                f"Capacity shortfall: {point['load_gap_mw']} MW.",
-                f"Estimated expansion need: {point['transformers_needed']} new transformer(s).",
+                (
+                    f"Capacity shortfall is {point['load_gap_mw']} MW on {point['target_date']}; "
+                    f"this point covers ~{point['cluster_load_gap_mw']} MW of that deficit."
+                ),
+                (
+                    f"In {point['district'].title()}, about {overloaded_tp_count} of {current_tp_count} current TPs "
+                    "are likely to run above safe limits at peak hours, increasing outage/shutdown risk."
+                ),
                 (
                     "Main stress drivers: "
-                    f"density {int(affecting.get('population_density', 0))}, "
-                    f"temperature factor {round(float(affecting.get('avg_temp', 0)), 1)}C, "
-                    f"commercial load index {int(affecting.get('commercial_infra_count', 0))}."
+                    f"population trend {district_trends['population_pct']}%, "
+                    f"commercial growth {district_trends['commercial_pct']}%, "
+                    f"temperature indicator {round(float(affecting.get('avg_temp', 0)), 1)}C. "
+                    f"{_seasonal_pressure_note(point['target_date'])}"
                 ),
+                f"Estimated expansion need for district: {point['transformers_needed']} new transformer(s).",
             ]
 
         global global_future_state
