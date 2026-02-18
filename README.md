@@ -120,10 +120,10 @@ VITE_DEBUG_FLOW=true
 
 ---
 
-## 5) Start Backend
+## 5) Start Backend (Recommended)
 
 ```bash
-python main.py
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
 Health check:
@@ -137,6 +137,42 @@ You should see JSON with:
 - `provider: ollama-local-predictive`
 - valid `csv_path`
 - valid `model_path`
+
+Alternative (also works):
+
+```bash
+python main.py
+```
+
+## 5.1) Stop Backend
+
+Preferred:
+
+- Press `Ctrl + C` in the terminal running uvicorn.
+
+If process does not exit cleanly, stop by port:
+
+```bash
+lsof -ti:8000 | xargs kill -TERM
+```
+
+Force kill if needed:
+
+```bash
+lsof -ti:8000 | xargs kill -9
+```
+
+Optional helper alias (add to `~/.zshrc`):
+
+```bash
+alias stopgrid='lsof -ti:8000 | xargs kill -TERM 2>/dev/null || true'
+```
+
+Then use:
+
+```bash
+stopgrid
+```
 
 ---
 
