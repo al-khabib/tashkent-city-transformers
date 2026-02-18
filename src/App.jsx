@@ -3,7 +3,6 @@ import MapView from './components/MapView.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import ControlPanel from './components/ControlPanel.jsx';
 import AnalyticsModal from './components/AnalyticsModal.jsx';
-import Chatbot from './components/Chatbot.jsx';
 import TimeControlPanel from './components/TimeControlPanel.jsx';
 import transformerSubstations from './data/mockData.js';
 import { useGridStress } from './hooks/useGridStress.js';
@@ -24,6 +23,7 @@ function App() {
   const [futureDate, setFutureDate] = useState(null);
   const [futureData, setFutureData] = useState(null);
   const [futureLoading, setFutureLoading] = useState(false);
+  const [activeSuggestedTp, setActiveSuggestedTp] = useState(null);
   const mapRef = useRef(null);
   const futureDateKey = useMemo(
     () => (futureDate ? futureDate.toISOString().slice(0, 10) : null),
@@ -58,6 +58,7 @@ function App() {
   useEffect(() => {
     if (!futureMode || !futureDateKey) {
       setFutureData(null);
+      setActiveSuggestedTp(null);
       return;
     }
     const controller = new AbortController();
@@ -155,6 +156,7 @@ function App() {
           showHighGrowthZones={false}
           futureMode={futureMode}
           futurePrediction={futureData}
+          onSuggestedTpFocus={setActiveSuggestedTp}
         />
       </div>
 
@@ -184,14 +186,6 @@ function App() {
         construction={construction}
       />
 
-      <Chatbot
-        temperature={temperature}
-        construction={construction}
-        selectedTransformerId={selectedId}
-        futureMode={futureMode}
-        futureDate={futureDateKey}
-        futureSummary={futureData}
-      />
     </div>
   );
 }

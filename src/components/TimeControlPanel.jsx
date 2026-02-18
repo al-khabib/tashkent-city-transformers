@@ -112,10 +112,10 @@ function TimeControlPanel({
             </button>
             <button
               type='button'
-              onClick={() => applyQuickDate({ type: 'years', value: 3 })}
+              onClick={() => applyQuickDate({ type: 'years', value: 2 })}
               className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
             >
-              +3 Years
+              +2 Years
             </button>
           </div>
         </div>

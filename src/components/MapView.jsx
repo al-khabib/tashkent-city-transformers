@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Polygon, Tooltip, GeoJSON } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import PropTypes from 'prop-types';
 import { BarChart3, Zap } from 'lucide-react';
@@ -76,48 +76,6 @@ const createSuggestedTpIcon = () =>
     className: '',
   });
 
-const buildDistrictGeoJson = (stations, districtPredictionMap) => {
-  if (!stations?.length) return { type: 'FeatureCollection', features: [] };
-  const grouped = stations.reduce((acc, station) => {
-    const key = station.district?.toLowerCase();
-    if (!key) return acc;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(station.coordinates);
-    return acc;
-  }, {});
-
-  const features = Object.entries(grouped).map(([district, points]) => {
-    const lats = points.map((item) => item[0]);
-    const lngs = points.map((item) => item[1]);
-    const minLat = Math.min(...lats) - 0.015;
-    const maxLat = Math.max(...lats) + 0.015;
-    const minLng = Math.min(...lngs) - 0.015;
-    const maxLng = Math.max(...lngs) + 0.015;
-    const prediction = districtPredictionMap.get(district);
-    return {
-      type: 'Feature',
-      properties: {
-        district,
-        load_percentage: prediction?.load_percentage ?? null,
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [minLng, minLat],
-            [maxLng, minLat],
-            [maxLng, maxLat],
-            [minLng, maxLat],
-            [minLng, minLat],
-          ],
-        ],
-      },
-    };
-  });
-
-  return { type: 'FeatureCollection', features };
-};
-
 function MapView({
   stations,
   allStations,
@@ -128,12 +86,9 @@ function MapView({
   showHighGrowthZones,
   futureMode,
   futurePrediction,
+  onSuggestedTpFocus,
 }) {
   const { t } = useTranslation();
-  const districtPredictionMap = new Map(
-    (futurePrediction?.district_predictions || []).map((item) => [String(item.district).toLowerCase(), item])
-  );
-  const districtGeoJson = buildDistrictGeoJson(allStations || stations, districtPredictionMap);
   const suggestedTpIcon = createSuggestedTpIcon();
   const futureSuggestions = futurePrediction?.suggested_tps || [];
 
@@ -157,31 +112,8 @@ function MapView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {futureMode && (
-        <GeoJSON
-          data={districtGeoJson}
-          style={(feature) => {
-            const load = feature?.properties?.load_percentage;
-            const color = load == null ? '#64748b' : load > 90 ? '#ef4444' : load >= 70 ? '#facc15' : '#22c55e';
-            return {
-              color,
-              fillColor: color,
-              fillOpacity: 0.22,
-              weight: 1.4,
-            };
-          }}
-          onEachFeature={(feature, layer) => {
-            const district = feature?.properties?.district || 'unknown';
-            const load = feature?.properties?.load_percentage;
-            layer.bindTooltip(
-              `${district.toUpperCase()} • ${load == null ? 'N/A' : `${Math.round(load)}%`}`,
-              { sticky: true }
-            );
-          }}
-        />
-      )}
-
       {showHighGrowthZones &&
+        !futureMode &&
         HIGH_GROWTH_ZONES.map((zone) => (
           <Polygon
             key={zone.id}
@@ -269,12 +201,38 @@ function MapView({
 
       {futureMode &&
         futureSuggestions.map((point) => (
-          <Marker key={point.id} position={point.coordinates} icon={suggestedTpIcon}>
+          <Marker
+            key={point.id}
+            position={point.coordinates}
+            icon={suggestedTpIcon}
+            eventHandlers={{
+              click: () => {
+                onSuggestedTpFocus?.(point);
+              },
+            }}
+          >
             <Popup className="bg-transparent" minWidth={260} maxWidth={300}>
               <div className="rounded-2xl border border-amber-500/50 bg-slate-900/95 p-4 text-slate-100 shadow-xl backdrop-blur">
-                <p className="text-xs uppercase tracking-[0.3em] text-amber-300">Suggested TP</p>
-                <p className="mt-1 text-sm font-semibold text-slate-100">{point.district}</p>
-                <p className="text-xs text-slate-400">Future Mode placement recommendation</p>
+                <div className="mb-2 inline-flex rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-200">
+                  Recommendation
+                </div>
+                <p className="text-sm font-semibold text-slate-100">
+                  Proposed Installation: {point.district}
+                </p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Date: {point.target_date || 'N/A'}
+                </p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Expected Load: {point.expected_load_kw ?? 'N/A'} kW
+                </p>
+                <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
+                  {point.why_summary || 'Projected demand exceeds available district capacity.'}
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-300">
+                  {(point.reasons || []).map((reason) => (
+                    <li key={`${point.id}-${reason}`}>{reason}</li>
+                  ))}
+                </ul>
               </div>
             </Popup>
           </Marker>
@@ -334,9 +292,19 @@ MapView.propTypes = {
         id: PropTypes.string,
         district: PropTypes.string,
         coordinates: PropTypes.arrayOf(PropTypes.number),
+        expected_load_kw: PropTypes.number,
+        reasons: PropTypes.arrayOf(PropTypes.string),
+        target_date: PropTypes.string,
+        why_summary: PropTypes.string,
+        expected_load_mw: PropTypes.number,
+        current_capacity_mw: PropTypes.number,
+        load_gap_mw: PropTypes.number,
+        load_percentage: PropTypes.number,
+        transformers_needed: PropTypes.number,
       })
     ),
   }),
+  onSuggestedTpFocus: PropTypes.func,
 };
 
 MapView.defaultProps = {
@@ -348,6 +316,7 @@ MapView.defaultProps = {
   showHighGrowthZones: false,
   futureMode: false,
   futurePrediction: null,
+  onSuggestedTpFocus: undefined,
 };
 
 export default MapView;

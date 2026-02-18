@@ -331,6 +331,37 @@ async def predict_endpoint(item: PredictRequest, request: Request):
                     )
                 )
 
+        district_prediction_map = {entry["district"]: entry for entry in district_predictions}
+        for point in suggested_tps:
+            district_prediction = district_prediction_map.get(point["district"], {})
+            affecting = district_prediction.get("affecting_factors", {})
+            predicted_load = float(district_prediction.get("predicted_load_mw", 0))
+            current_capacity = float(district_prediction.get("current_capacity_mw", 0))
+            load_gap = float(district_prediction.get("load_gap_mw", 0))
+            load_percentage = float(district_prediction.get("load_percentage", 0))
+            point["target_date"] = district_prediction.get("target_date", item.target_date)
+            point["expected_load_kw"] = round(predicted_load * 1000, 1)
+            point["expected_load_mw"] = round(predicted_load, 2)
+            point["current_capacity_mw"] = round(current_capacity, 2)
+            point["load_gap_mw"] = round(load_gap, 2)
+            point["load_percentage"] = round(load_percentage, 2)
+            point["transformers_needed"] = int(district_prediction.get("transformers_needed", 0))
+            point["why_summary"] = (
+                f"By {point['target_date']}, projected demand reaches {point['expected_load_mw']} MW "
+                f"against {point['current_capacity_mw']} MW capacity "
+                f"({point['load_percentage']}% utilization)."
+            )
+            point["reasons"] = [
+                f"Capacity shortfall: {point['load_gap_mw']} MW.",
+                f"Estimated expansion need: {point['transformers_needed']} new transformer(s).",
+                (
+                    "Main stress drivers: "
+                    f"density {int(affecting.get('population_density', 0))}, "
+                    f"temperature factor {round(float(affecting.get('avg_temp', 0)), 1)}C, "
+                    f"commercial load index {int(affecting.get('commercial_infra_count', 0))}."
+                ),
+            ]
+
         global global_future_state
         global_future_state = {
             "target_date": item.target_date,
@@ -363,6 +394,7 @@ async def ask_question(item: ChatQuery, request: Request):
         query = (item.query or item.question or "").strip()
         if not query:
             raise HTTPException(status_code=400, detail="Query is required.")
+        context_snapshot = item.context_snapshot or item.context or {}
 
         user_language = _detect_language_fast(query)
         query_en = translate_to_english(query, user_language)
@@ -375,11 +407,11 @@ async def ask_question(item: ChatQuery, request: Request):
         answer_en = str(
             llm.invoke(
                 "You are now synced with the Map Future Mode.\n"
-                "When a date is selected, provide a detailed breakdown of the ML model results: "
-                "affecting factors, expected load, and risk level.\n"
-                "You must explain why pulse-glow suggested TP icons appear on map.\n"
-                "Use clear bullets and mention district names.\n\n"
+                "When a date is selected, provide only a concise prediction summary.\n"
+                "Do not explain reasons behind suggested TP installations unless the user explicitly asks why.\n"
+                "Keep the answer short, practical, and focused on what will happen.\n\n"
                 f"Future mode state: {future_context}\n"
+                f"Client context snapshot: {json.dumps(context_snapshot, ensure_ascii=True)}\n"
                 f"User question: {query_en}\n"
                 "Respond with practical guidance for the Mayor."
             )

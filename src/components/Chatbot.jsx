@@ -122,7 +122,8 @@ function Chatbot({
   selectedTransformerId,
   futureMode,
   futureDate,
-  futureSummary
+  futureSummary,
+  activeSuggestedTp
 }) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -154,6 +155,12 @@ function Chatbot({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading, open])
 
+  useEffect(() => {
+    if (futureMode && futureDate) {
+      setOpen(true)
+    }
+  }, [futureMode, futureDate])
+
   const contextState = useMemo(
     () => ({
       temperature,
@@ -162,6 +169,13 @@ function Chatbot({
       futureMode: Boolean(futureMode),
       futureDate: futureDate || null,
       futureSummary: futureSummary || null,
+      focusedSuggestedTp: activeSuggestedTp
+        ? {
+            id: activeSuggestedTp.id,
+            district: activeSuggestedTp.district,
+            expected_load_kw: activeSuggestedTp.expected_load_kw ?? null
+          }
+        : null,
       timestamp: new Date().toISOString()
     }),
     [
@@ -170,19 +184,20 @@ function Chatbot({
       selectedTransformerId,
       futureMode,
       futureDate,
-      futureSummary
+      futureSummary,
+      activeSuggestedTp
     ]
   )
 
   const buildAutoFuturePrompt = () => {
     const lang = i18n.resolvedLanguage
     if (lang === 'uz') {
-      return `Iltimos ${futureDate} uchun Future Mode bo'yicha to'liq tumanlar kesimida hisobot bering: har bir tuman uchun predicted_load_mw, current_capacity_mw, load_percentage, risk_level, transformers_needed va barcha affecting_factors (district_rating, population_density, avg_temp, asset_age, commercial_infra_count, months_ahead). Yakunda eng kritik 3 tumanni va nima uchun pulse-glow suggested TP ikonlari chiqqanini tushuntiring.`
+      return `${futureDate} uchun Future Mode bo'yicha qisqa boshqaruv xulosasini bering: umumiy holat, eng yuqori riskdagi 3 tuman, jami kerak bo'ladigan TP soni va tezkor tavsiya. Sabablarni batafsil yozmang.`
     }
     if (lang === 'ru') {
-      return `Пожалуйста, дай полный отчет Future Mode на дату ${futureDate}: по каждому району укажи predicted_load_mw, current_capacity_mw, load_percentage, risk_level, transformers_needed и все affecting_factors (district_rating, population_density, avg_temp, asset_age, commercial_infra_count, months_ahead). В конце выдели 3 самых критичных района и объясни, почему появились pulse-glow suggested TP иконки.`
+      return `Дай короткое управленческое резюме Future Mode на дату ${futureDate}: общий статус, топ-3 районов по риску, общее число нужных TP и оперативная рекомендация. Без подробных причин по каждой точке.`
     }
-    return `Please provide a full Future Mode report for ${futureDate}: for each district include predicted_load_mw, current_capacity_mw, load_percentage, risk_level, transformers_needed, and all affecting_factors (district_rating, population_density, avg_temp, asset_age, commercial_infra_count, months_ahead). Finish with top 3 critical districts and explain why pulse-glow suggested TP icons were generated.`
+    return `Provide a concise Future Mode executive summary for ${futureDate}: overall status, top 3 highest-risk districts, total transformers needed, and one immediate action. Do not include detailed per-TP reasons.`
   }
 
   const sendMessage = async (providedText = null, options = {}) => {
@@ -451,63 +466,23 @@ function Chatbot({
                             Future Mode Report •{' '}
                             {message.futureState.target_date}
                           </p>
-                          <div className='space-y-1.5'>
-                            {message.futureState.district_predictions.map(
-                              (row) => (
-                                <div
-                                  key={`${message.id}-${row.district}`}
-                                  className='rounded-lg border border-slate-700/80 bg-slate-800/60 p-2'
-                                >
-                                  <div className='flex items-center justify-between'>
-                                    <span className='font-semibold text-slate-100'>
-                                      {row.district}
-                                    </span>
-                                    <span
-                                      className={
-                                        row.load_percentage > 90
-                                          ? 'text-rose-300'
-                                          : row.load_percentage >= 70
-                                            ? 'text-amber-300'
-                                            : 'text-emerald-300'
-                                      }
-                                    >
-                                      {(row.load_percentage ?? 0).toFixed(1)}%
-                                    </span>
-                                  </div>
-                                  <div className='mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-300'>
-                                    <span>
-                                      Load:{' '}
-                                      {(row.predicted_load_mw ?? 0).toFixed(2)}{' '}
-                                      MW
-                                    </span>
-                                    <span>
-                                      Capacity:{' '}
-                                      {(row.current_capacity_mw ?? 0).toFixed(
-                                        2
-                                      )}{' '}
-                                      MW
-                                    </span>
-                                    <span>Risk: {row.risk_level || 'N/A'}</span>
-                                    <span>
-                                      TP Needed: {row.transformers_needed ?? 0}
-                                    </span>
-                                    <span>
-                                      Density:{' '}
-                                      {row.affecting_factors
-                                        ?.population_density ?? 'N/A'}
-                                    </span>
-                                    <span>
-                                      Temp:{' '}
-                                      {row.affecting_factors?.avg_temp ?? 'N/A'}{' '}
-                                      C
-                                    </span>
-                                  </div>
-                                </div>
-                              )
-                            )}
+                          <div className='rounded-lg border border-slate-700/80 bg-slate-800/50 p-2'>
+                            <p className='text-[11px] text-slate-300'>
+                              Total TP needed:{' '}
+                              <span className='font-semibold text-slate-100'>
+                                {message.futureState.total_transformers_needed ??
+                                  0}
+                              </span>
+                            </p>
+                            <p className='mt-1 text-[11px] text-slate-300'>
+                              Suggested TP markers:{' '}
+                              <span className='font-semibold text-slate-100'>
+                                {message.futureState.suggested_tps?.length || 0}
+                              </span>
+                            </p>
                           </div>
 
-                          <div className='mt-3 rounded-lg border border-slate-700/80 bg-slate-800/50 p-2'>
+                          <div className='mt-2 rounded-lg border border-slate-700/80 bg-slate-800/50 p-2'>
                             <p className='text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-300'>
                               Top Critical Districts
                             </p>
@@ -603,14 +578,20 @@ Chatbot.propTypes = {
   selectedTransformerId: PropTypes.string,
   futureMode: PropTypes.bool,
   futureDate: PropTypes.string,
-  futureSummary: PropTypes.object
+  futureSummary: PropTypes.object,
+  activeSuggestedTp: PropTypes.shape({
+    id: PropTypes.string,
+    district: PropTypes.string,
+    expected_load_kw: PropTypes.number
+  })
 }
 
 Chatbot.defaultProps = {
   selectedTransformerId: null,
   futureMode: false,
   futureDate: null,
-  futureSummary: null
+  futureSummary: null,
+  activeSuggestedTp: null
 }
 
 export default Chatbot
