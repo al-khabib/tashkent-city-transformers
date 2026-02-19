@@ -228,8 +228,18 @@ function AnalyticsModal({ open, station, onClose, temperature, construction }) {
               <div className="mt-6 grid gap-6 md:grid-cols-4">
                 <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4">
                   <p className="text-xs uppercase text-slate-400">{t('analytics.projectedLoad')}</p>
-                  <p className="text-4xl font-semibold text-slate-100">{station.projectedPercent}%</p>
-                  <p className="text-sm text-slate-400">{station.projectedKva} kVA / {station.capacity_kva} kVA</p>
+                  <p className={`text-4xl font-semibold ${
+                    station.status === 'green' ? 'text-emerald-400' :
+                    station.status === 'yellow' ? 'text-amber-300' :
+                    station.status === 'red' ? 'text-red-400' :
+                    'text-slate-100'
+                  }`}>{station.projectedPercent}%</p>
+                  <p className={`text-sm ${
+                    station.status === 'green' ? 'text-emerald-300' :
+                    station.status === 'yellow' ? 'text-amber-300' :
+                    station.status === 'red' ? 'text-red-300' :
+                    'text-slate-400'
+                  }`}>{station.projectedKva} kVA / {station.capacity_kva} kVA</p>
                 </div>
                 <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4">
                   <p className="text-xs uppercase text-slate-400">{t('analytics.riskLevel')}</p>

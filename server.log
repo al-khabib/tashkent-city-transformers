@@ -1,0 +1,10 @@
+/Users/nerfd/sandbox/tashkent-city-transformers/main.py:141: LangChainDeprecationWarning: The class `Ollama` was deprecated in LangChain 0.3.1 and will be removed in 1.0.0. An updated version of the class exists in the `langchain-ollama package and should be used instead. To use it run `pip install -U `langchain-ollama` and import as `from `langchain_ollama import OllamaLLM``.
+  llm = Ollama(
+INFO:     Started server process [34670]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:grid-backend:GET /api/stations 200 17.03ms
+INFO:     127.0.0.1:56404 - "GET /api/stations HTTP/1.1" 200 OK
+INFO:grid-backend:GET /api/stations 200 19.37ms
+INFO:     127.0.0.1:56416 - "GET /api/stations HTTP/1.1" 200 OK

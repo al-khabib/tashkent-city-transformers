@@ -49,11 +49,28 @@ const statusColors = {
   Stable: 'text-emerald-300',
 };
 
-const loadToColor = (percent) => {
-  if (percent >= 90) return '#f87171';
-  if (percent >= 70) return '#facc15';
-  if (percent >= 40) return '#22c55e';
-  return '#94a3b8';
+const statusToColor = (status) => {
+  switch (status) {
+    case 'green':
+      return '#22c55e';  // Emerald for < 57%
+    case 'yellow':
+      return '#eab308';  // Amber for 57-80%
+    case 'red':
+      return '#f87171';  // Red for >= 80%
+    default:
+      return '#94a3b8';  // Gray fallback
+  }
+};
+
+const loadToColor = (percent, status) => {
+  // If status is provided, use it directly
+  if (status) {
+    return statusToColor(status);
+  }
+  // Otherwise calculate from percent: <50% green, 50-80% yellow, >=80% red
+  if (percent >= 80) return '#f87171';
+  if (percent >= 50) return '#eab308';
+  return '#22c55e';
 };
 
 const createCurrentTpIcon = (color, scale, isFocused) => {
@@ -134,7 +151,7 @@ function MapView({
           key={station.id}
           position={station.coordinates}
           icon={createCurrentTpIcon(
-            selectedId === station.id ? '#38bdf8' : loadToColor(station.projectedPercent),
+            selectedId === station.id ? '#38bdf8' : loadToColor(station.projectedPercent, station.status),
             station.markerScale || 1,
             selectedId === station.id
           )}
@@ -223,7 +240,7 @@ function MapView({
                   Date: {point.target_date || 'N/A'}
                 </p>
                 <p className="mt-1 text-xs text-slate-300">
-                  Expected Load: {point.expected_load_kw ?? 'N/A'} kW
+                  Expected Load: {point.expected_load_kva ?? 'N/A'} kVA
                 </p>
                 <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
                   {point.why_summary || 'Projected demand exceeds available district capacity.'}

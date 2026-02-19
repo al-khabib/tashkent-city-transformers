@@ -4,7 +4,6 @@ import Sidebar from './components/Sidebar.jsx';
 import ControlPanel from './components/ControlPanel.jsx';
 import AnalyticsModal from './components/AnalyticsModal.jsx';
 import TimeControlPanel from './components/TimeControlPanel.jsx';
-import transformerSubstations from './data/mockData.js';
 import { useGridStress } from './hooks/useGridStress.js';
 
 const API_BASE_URL = (
@@ -24,11 +23,40 @@ function App() {
   const [futureData, setFutureData] = useState(null);
   const [futureLoading, setFutureLoading] = useState(false);
   const [activeSuggestedTp, setActiveSuggestedTp] = useState(null);
+  const [backendStations, setBackendStations] = useState([]);
+  const [stationsLoading, setStationsLoading] = useState(true);
   const mapRef = useRef(null);
   const futureDateKey = useMemo(
     () => (futureDate ? futureDate.toISOString().slice(0, 10) : null),
     [futureDate]
   );
+
+  // Fetch stations from backend on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    const fetchStations = async () => {
+      setStationsLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/stations`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch stations: ${response.status}`);
+        }
+        const data = await response.json();
+        setBackendStations(data.stations || []);
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          console.error('[App] Failed to fetch backend stations:', error);
+          setBackendStations([]);
+        }
+      } finally {
+        setStationsLoading(false);
+      }
+    };
+    fetchStations();
+    return () => controller.abort();
+  }, []);
 
   const {
     stations,
@@ -40,7 +68,7 @@ function App() {
     construction,
     setTemperature,
     setConstruction,
-  } = useGridStress(transformerSubstations, searchTerm);
+  } = useGridStress(backendStations, searchTerm);
 
   useEffect(() => {
     const handleResize = () => {

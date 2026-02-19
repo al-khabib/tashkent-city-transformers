@@ -142,7 +142,12 @@ function Sidebar({
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-slate-100">{station.id}</span>
                 <span className="text-slate-500">|</span>
-                <span className="text-red-300">{Math.round(station.projectedPercent)}%</span>
+                <span className={`${
+                  station.status === 'green' ? 'text-emerald-300' :
+                  station.status === 'yellow' ? 'text-amber-300' :
+                  station.status === 'red' ? 'text-red-300' :
+                  'text-slate-300'
+                }`}>{Math.round(station.projectedPercent)}%</span>
                 <span className="text-slate-500">|</span>
                 <span className="text-slate-400">
                   {station.installDate

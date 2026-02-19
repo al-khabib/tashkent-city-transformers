@@ -176,8 +176,20 @@ def predict_grid_load(district: str, target_date: str) -> Dict[str, Any]:
         float(months_ahead),
     ]
 
-    predicted_load = float(model.predict([features])[0])
-    current_capacity = float(current["current_capacity_mw"])
+    predicted_load_mw = float(model.predict([features])[0])
+    current_capacity_mw = float(current["current_capacity_mw"])
+    
+    # Scale to individual transformer level (40 total transformers across 8 districts ≈ 5 per district)
+    # Average transformer capacity: 75 kVA = 0.075 MW
+    # Per-transformer scaling factor: 0.075 MW / (current_capacity_mw / num_transformers_per_district)
+    num_transformers_per_district = 5  # average from _generate_stations_from_csv logic (4-6 range)
+    avg_transformer_capacity_mw = 0.075  # 75 kVA average
+    
+    # Scale the predictions to per-transformer level
+    scaling_factor = (num_transformers_per_district * avg_transformer_capacity_mw) / max(current_capacity_mw, 1e-6)
+    predicted_load = predicted_load_mw * scaling_factor
+    current_capacity = current_capacity_mw * scaling_factor
+    
     load_gap = predicted_load - current_capacity
     utilization = predicted_load / max(current_capacity, 1e-6)
     load_percentage = utilization * 100
@@ -187,12 +199,15 @@ def predict_grid_load(district: str, target_date: str) -> Dict[str, Any]:
     risk_level = "Low" if risk_score <= 4 else "Medium" if risk_score <= 7 else "High"
 
     tp_capacity_mw = float(current.get("avg_tp_capacity_mw", 2.5))
-    tps_needed = max(0, math.ceil(load_gap / max(tp_capacity_mw, 0.1)))
+    tps_needed = max(0, math.ceil(load_gap / max(tp_capacity_mw * scaling_factor, 0.1)))
 
     return {
         "district": district,
         "target_date": target.isoformat(),
         "months_ahead": months_ahead,
+        "predicted_load_kva": round(predicted_load * 1000, 2),
+        "current_capacity_kva": round(current_capacity * 1000, 2),
+        "load_gap_kva": round(load_gap * 1000, 2),
         "predicted_load_mw": round(predicted_load, 2),
         "current_capacity_mw": round(current_capacity, 2),
         "load_gap_mw": round(load_gap, 2),
@@ -360,19 +375,194 @@ def _make_suggested_tp_points(district: str, transformers_needed: int, overload_
     ]
 
 
+def _generate_stations_from_csv() -> list[Dict[str, Any]]:
+    """Generate transformer stations from CSV data in kVA format."""
+    # Standard transformer capacity options in kVA
+    CAPACITY_OPTIONS = [50, 100, 160, 200, 240, 300, 400]
+    
+    stations = []
+    station_id = 1
+    
+    # Generate exactly 20 transformers: 10 green (<50%), 5 yellow (50-80%), 5 red (>80%)
+    target_stations = 20
+    green_count = 10
+    yellow_count = 5
+    red_count = 5
+    
+    status_distribution = ["green"] * green_count + ["yellow"] * yellow_count + ["red"] * red_count
+    np.random.shuffle(status_distribution)
+    
+    status_idx = 0
+    
+    for district in known_districts:
+        if status_idx >= len(status_distribution):
+            break
+            
+        district_data = district_df[district_df["district"] == district].sort_values("snapshot_date")
+        if district_data.empty:
+            continue
+        
+        latest = district_data.iloc[-1]
+        center = DISTRICT_CENTERS.get(district, [41.3111, 69.2797])
+        
+        current_load_mw = float(latest.get("actual_peak_load_mw", 50))
+        capacity_mw = float(latest.get("current_capacity_mw", 120))
+        
+        # Calculate how many stations to create for this district
+        remaining_stations = target_stations - station_id + 1
+        remaining_districts = len([d for d in known_districts if known_districts.index(d) >= known_districts.index(district)])
+        num_stations = max(1, remaining_stations // remaining_districts)
+        
+        if num_stations <= 0:
+            break
+        
+        # Generate history for each station
+        history_data = []
+        for _, row in district_data.iterrows():
+            history_data.append({
+                "date": str(row["snapshot_date"]),
+                "load": round(float(row["actual_peak_load_mw"]) / capacity_mw * 100, 1),
+            })
+        
+        for i in range(num_stations):
+            if status_idx >= len(status_distribution) or station_id > target_stations:
+                break
+            
+            # Get the predetermined status for this station
+            target_status = status_distribution[status_idx]
+            status_idx += 1
+            
+            # Select from standard capacity options and convert to Python int
+            capacity_kva = int(np.random.choice(CAPACITY_OPTIONS))
+            
+            # Generate load percentage based on target status
+            if target_status == "green":
+                load_pct = np.random.uniform(10, 49)  # <50%
+            elif target_status == "yellow":
+                load_pct = np.random.uniform(50, 79)  # 50-80%
+            else:  # red
+                load_pct = np.random.uniform(80, 98)  # >80%
+            
+            station_id_str = f"ts-{station_id:03d}"
+            station_id += 1
+            
+            stations.append({
+                "id": station_id_str,
+                "name": f"Substation-{district.replace(' ', '-')}-{chr(65 + (i % 26))}",
+                "district": district.title(),
+                "coordinates": [
+                    round(center[0] + np.random.uniform(-0.01, 0.01), 6),
+                    round(center[1] + np.random.uniform(-0.01, 0.01), 6),
+                ],
+                "load_weight": round(load_pct, 1),
+                "capacity_kva": capacity_kva,
+                "status": target_status,  # Color status: green, yellow, red
+                "installDate": int(2023 - np.random.randint(0, 5)),
+                "demographic_growth": round(1.0 + np.random.uniform(0.15, 0.35), 2),
+                "history": history_data[-24:],  # Last 24 months
+            })
+    
+    return stations
+
+
+@app.get("/api/stations")
+async def get_all_stations(request: Request):
+    """Get all transformer stations in kVA format."""
+    try:
+        stations = _generate_stations_from_csv()
+        return {
+            "request_id": request.state.request_id,
+            "count": len(stations),
+            "stations": stations,
+        }
+    except Exception as error:
+        logger.exception("get_all_stations failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": str(error), "request_id": request.state.request_id},
+        )
+
+
+@app.get("/api/stations/{district}")
+async def get_district_stations(district: str, request: Request):
+    """Get transformer stations for a specific district in kVA format."""
+    try:
+        all_stations = _generate_stations_from_csv()
+        district_stations = [s for s in all_stations if s["district"].lower() == district.lower()]
+        
+        if not district_stations:
+            raise HTTPException(
+                status_code=404,
+                detail={"message": f"District not found: {district}", "request_id": request.state.request_id},
+            )
+        
+        return {
+            "request_id": request.state.request_id,
+            "district": district,
+            "count": len(district_stations),
+            "stations": district_stations,
+        }
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception(f"get_district_stations failed for {district}")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": str(error), "request_id": request.state.request_id},
+        )
+
+
 @app.post("/predict")
 async def predict_endpoint(item: PredictRequest, request: Request):
     try:
+        # First get all stations to find critical ones
+        all_stations = _generate_stations_from_csv()
+        
         district_predictions = []
         suggested_tps = []
+        
         for district in known_districts:
             prediction = predict_grid_load(district, item.target_date)
             district_predictions.append(prediction)
-            if prediction["predicted_load_mw"] > prediction["current_capacity_mw"]:
+            
+            # Find critical (red) transformers in this district
+            critical_transformers = [s for s in all_stations if s["district"] == district.title() and s["status"] == "red"]
+            
+            # In future prediction mode, always place suggestions next to critical transformers
+            # This ensures all critical areas get reinforcement recommendations
+            if critical_transformers:
+                # Place a suggestion next to each critical transformer
+                for i, critical_tf in enumerate(critical_transformers):
+                    # Add some jitter to the critical transformer location
+                    lat = critical_tf["coordinates"][0] + np.random.uniform(-0.002, 0.002)
+                    lon = critical_tf["coordinates"][1] + np.random.uniform(-0.002, 0.002)
+                    
+                    suggested_tps.append({
+                        "id": f"{district}-tp-{i+1}",
+                        "district": district,
+                        "coordinates": [round(lat, 6), round(lon, 6)],
+                        "cluster_share_pct": 20.0,
+                    })
+            elif prediction["predicted_load_mw"] > prediction["current_capacity_mw"]:
+                # If no critical transformers but prediction shows overload, use clustering approach
+                transformers_needed = prediction["transformers_needed"]
+                months_ahead = prediction.get("months_ahead", 1)
+                
+                # Scale suggestions based on how far into the future (more months = more suggestions)
+                # Linear scaling: 0-6 months = 1x, 6-12 months = 1.5x, 12+ months = 2x
+                time_scale_factor = 1.0
+                if months_ahead > 12:
+                    time_scale_factor = 2.0
+                elif months_ahead > 6:
+                    time_scale_factor = 1.5
+                
+                scaled_transformers_needed = max(1, int(transformers_needed * time_scale_factor))
+                
+                # Fall back to original clustering approach
                 suggested_tps.extend(
                     _make_suggested_tp_points(
                         district,
-                        prediction["transformers_needed"],
+                        scaled_transformers_needed,
                         max(0.0, prediction["load_gap_mw"]),
                     )
                 )
@@ -382,36 +572,52 @@ async def predict_endpoint(item: PredictRequest, request: Request):
             district_prediction = district_prediction_map.get(point["district"], {})
             affecting = district_prediction.get("affecting_factors", {})
             district_trends = _district_factor_trends(point["district"])
-            predicted_load = float(district_prediction.get("predicted_load_mw", 0))
-            current_capacity = float(district_prediction.get("current_capacity_mw", 0))
-            load_gap = float(district_prediction.get("load_gap_mw", 0))
+            predicted_load_kva = float(district_prediction.get("predicted_load_kva", 0))
+            current_capacity_kva = float(district_prediction.get("current_capacity_kva", 0))
+            load_gap_kva = float(district_prediction.get("load_gap_kva", 0))
             load_percentage = float(district_prediction.get("load_percentage", 0))
             cluster_share_pct = float(point.get("cluster_share_pct", 0.0))
+            
+            # Ensure all numeric values are valid
+            predicted_load_kva = predicted_load_kva if not (predicted_load_kva != predicted_load_kva) else 0  # NaN check
+            current_capacity_kva = current_capacity_kva if not (current_capacity_kva != current_capacity_kva) else 0  # NaN check
+            load_gap_kva = load_gap_kva if not (load_gap_kva != load_gap_kva) else 0  # NaN check
+            load_percentage = load_percentage if not (load_percentage != load_percentage) else 0  # NaN check
+            
             point["target_date"] = district_prediction.get("target_date", item.target_date)
-            point["expected_load_kw"] = round(predicted_load * 1000, 1)
-            point["expected_load_mw"] = round(predicted_load, 2)
-            point["current_capacity_mw"] = round(current_capacity, 2)
-            point["load_gap_mw"] = round(load_gap, 2)
-            point["load_percentage"] = round(load_percentage, 2)
+            point["expected_load_kva"] = round(float(predicted_load_kva), 1)
+            point["expected_load_mw"] = round(float(predicted_load_kva / 1000), 2)
+            point["current_capacity_kva"] = round(float(current_capacity_kva), 1)
+            point["current_capacity_mw"] = round(float(current_capacity_kva / 1000), 2)
+            point["load_gap_kva"] = round(float(load_gap_kva), 1)
+            point["load_gap_mw"] = round(float(load_gap_kva / 1000), 2)
+            point["load_percentage"] = round(float(load_percentage), 2)
             point["transformers_needed"] = int(district_prediction.get("transformers_needed", 0))
-            point["cluster_load_gap_mw"] = round((cluster_share_pct / 100.0) * max(load_gap, 0.0), 2)
+            point["cluster_load_gap_kva"] = round((cluster_share_pct / 100.0) * max(load_gap_kva, 0.0), 1)
+            
+            # Build why_summary with safe values
+            expected_load_display = int(point["expected_load_kva"]) if point["expected_load_kva"] >= 0 else 0
+            current_capacity_display = int(point["current_capacity_kva"]) if point["current_capacity_kva"] >= 0 else 0
+            load_pct_display = point["load_percentage"] if point["load_percentage"] >= 0 else 0
+            
             point["why_summary"] = (
-                f"By {point['target_date']}, projected demand reaches {point['expected_load_mw']} MW "
-                f"against {point['current_capacity_mw']} MW capacity "
-                f"({point['load_percentage']}% utilization)."
+                f"By {point['target_date']}, projected demand reaches {expected_load_display} kVA "
+                f"against {current_capacity_display} kVA capacity "
+                f"({load_pct_display}% utilization)."
             )
-            current_tp_count = max(1, int(round(current_capacity / max(float(district_df[district_df['district'] == point['district']].sort_values('snapshot_date').iloc[-1].get('avg_tp_capacity_mw', 2.5)), 0.1))))
+            # Scale TP counts to transformer level (5 transformers per district average)
+            current_tp_count = 5
             overloaded_tp_count = min(
                 current_tp_count,
-                int(math.ceil((max(load_gap, 0.0) / max(current_capacity, 0.1)) * current_tp_count)),
+                max(0, int(math.ceil((load_gap_kva / max(current_capacity_kva, 1)) * current_tp_count))),
             )
             point["reasons"] = [
                 (
-                    f"Capacity shortfall is {point['load_gap_mw']} MW on {point['target_date']}; "
-                    f"this point covers ~{point['cluster_load_gap_mw']} MW of that deficit."
+                    f"Capacity shortfall is {point['load_gap_kva']:.0f} kVA on {point['target_date']}; "
+                    f"this point covers ~{point['cluster_load_gap_kva']:.0f} kVA of that deficit."
                 ),
                 (
-                    f"In {point['district'].title()}, about {overloaded_tp_count} of {current_tp_count} current TPs "
+                    f"In {point['district'].title()}, about {overloaded_tp_count} of {current_tp_count} current transformers "
                     "are likely to run above safe limits at peak hours, increasing outage/shutdown risk."
                 ),
                 (
@@ -421,9 +627,19 @@ async def predict_endpoint(item: PredictRequest, request: Request):
                     f"temperature indicator {round(float(affecting.get('avg_temp', 0)), 1)}C. "
                     f"{_seasonal_pressure_note(point['target_date'])}"
                 ),
-                f"Estimated expansion need for district: {point['transformers_needed']} new transformer(s).",
+                f"Estimated expansion need for transformer group: {point['transformers_needed']} new unit(s).",
             ]
+            
+            # Add formatted recommendation summary for display
+            point["recommendation"] = (
+                f"Proposed Installation: {point['district']}\n\n"
+                f"Date: {point['target_date']}\n\n"
+                f"Expected Load: {expected_load_display} kVA\n\n"
+                f"{point['why_summary']}\n\n"
+                + "\n".join(f"{i+1}. {reason}" for i, reason in enumerate(point["reasons"]))
+            )
 
+        # Do not artificially cap suggestions; return all generated suggestions
         global global_future_state
         global_future_state = {
             "target_date": item.target_date,
