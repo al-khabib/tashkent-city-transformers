@@ -6,6 +6,16 @@ Current backend mode is **prediction-focused** (law RAG is not used in runtime f
 
 ---
 
+## Project Structure
+
+- `backend/`: FastAPI app package (`app.py`, config, runtime state, services)
+- `main.py`: thin compatibility entrypoint (`from backend.app import app`)
+- `src/`: React frontend
+- `model/`: model training script and optional artifacts
+- `data/`: PDF source documents
+
+---
+
 ## What Runs Where
 
 - Frontend: Vite/React at `http://localhost:5173`
@@ -80,7 +90,7 @@ If you need to generate/train from scratch:
 
 ```bash
 python generate_mock_data.py
-python train_model.py
+python model/train_model.py
 ```
 
 This creates:
@@ -98,8 +108,12 @@ Create `server/.env` (or root `.env`):
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_LLM_MODEL=llama3.1:8b
 OLLAMA_EMBED_MODEL=nomic-embed-text
+DATA_SOURCE_PROVIDER=csv
 ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 GRID_DATA_CSV=tashkent_grid_historic_data.csv
+COMPANY_API_BASE_URL=
+COMPANY_API_TOKEN=
+COMPANY_API_TIMEOUT_S=15
 GRID_MODEL_PATH=grid_load_rf.joblib
 ```
 
@@ -109,6 +123,21 @@ If your files are inside `model/`, use:
 GRID_DATA_CSV=model/tashkent_grid_historic_data.csv
 GRID_MODEL_PATH=model/grid_load_rf.joblib
 ```
+
+To use company APIs instead of CSV:
+
+```env
+DATA_SOURCE_PROVIDER=company_api
+COMPANY_API_BASE_URL=https://your-company-api.example.com
+COMPANY_API_TOKEN=your_token_if_required
+COMPANY_API_TIMEOUT_S=15
+```
+
+Current expected endpoint for historic records is:
+
+- `GET /grid/historic` returning either `[...]` or `{"data":[...]}`
+- Required fields per record:
+  - `district`, `snapshot_date`, `district_rating`, `population_density`, `avg_temp`, `asset_age`, `commercial_infra_count`, `current_capacity_mw`, `actual_peak_load_mw`
 
 Optional frontend env (`.env.local`):
 
@@ -123,7 +152,7 @@ VITE_DEBUG_FLOW=true
 ## 5) Start Backend (Recommended)
 
 ```bash
-python -m uvicorn main:app --host 127.0.0.1 --port 8000
+python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 ```
 
 Health check:
@@ -135,7 +164,7 @@ curl http://127.0.0.1:8000/health
 You should see JSON with:
 
 - `provider: ollama-local-predictive`
-- valid `csv_path`
+- `data_source_provider` (`csv` or `company_api`)
 - valid `model_path`
 
 Alternative (also works):
@@ -197,14 +226,14 @@ Open:
 ```bash
 curl -X POST http://127.0.0.1:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{"district":"sergeli","target_date":"2027-01-01"}'
+  -d '{"target_date":"2027-01-01"}'
 ```
 
 Expected keys:
 
 - `mode: "prediction"`
-- `prediction.risk_score`
-- `prediction.transformers_needed`
+- `district_predictions`
+- `total_transformers_needed`
 
 ### B) Chat endpoint (same pipeline used by UI chatbot)
 
@@ -216,9 +245,9 @@ curl -X POST http://127.0.0.1:8000/ask \
 
 Expected:
 
-- `mode: "prediction"`
+- `mode: "future_chat"`
 - `answer` (human-friendly summary)
-- `prediction` (structured numbers)
+- `future_state` (latest prediction context if generated)
 
 ### C) UI Chat test prompts
 
@@ -230,10 +259,11 @@ Expected:
 
 ## 8) Common Issues
 
-### `District stats CSV not found` / `Pre-trained model not found`
+### Data source / model startup errors
 
-- Check `GRID_DATA_CSV` and `GRID_MODEL_PATH` in `server/.env`.
-- Use relative paths from project root, e.g. `model/grid_load_rf.joblib`.
+- For CSV mode (`DATA_SOURCE_PROVIDER=csv`), check `GRID_DATA_CSV`.
+- For company API mode (`DATA_SOURCE_PROVIDER=company_api`), check `COMPANY_API_BASE_URL`, token, and API reachability.
+- In all modes, check `GRID_MODEL_PATH` (for example `model/grid_load_rf.joblib`).
 
 ### Chat timeout
 
