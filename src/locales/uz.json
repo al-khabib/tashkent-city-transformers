@@ -15,6 +15,8 @@
     "criticalPriorities": "Kritik ustuvorliklar",
     "criticalCount": "qizil: {{count}}",
     "noCritical": "Joriy simulyatsiyada qizil transformatorlar yo'q.",
+    "noCriticalFuture": "Tanlangan kelajak sanasi uchun kritik transformator topilmadi.",
+    "calculatingRisks": "Xavflar hisoblanmoqda...",
     "age": "Yoshi",
     "years": "{{count}}y",
     "na": "mavjud emas"

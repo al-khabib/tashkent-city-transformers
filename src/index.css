@@ -44,6 +44,12 @@ body {
   line-height: 1;
 }
 
+.grid-marker-high {
+  box-shadow:
+    0 0 0 3px rgba(239, 68, 68, 0.35),
+    0 0 14px rgba(239, 68, 68, 0.55);
+}
+
 .grid-suggested-symbol {
   font-size: 1rem;
   line-height: 1;

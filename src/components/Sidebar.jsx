@@ -1,8 +1,6 @@
 import PropTypes from 'prop-types';
 import { Search, ThermometerSun, Building2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-
-const CURRENT_YEAR = new Date().getFullYear();
 const LANGUAGE_OPTIONS = ['uz', 'ru', 'en'];
 
 function Sidebar({
@@ -14,6 +12,9 @@ function Sidebar({
   onConstructionChange,
   searchMatches,
   criticalStations,
+  futureCriticalStations,
+  isPredicting,
+  futureMode,
   onSelectStation,
   redZoneActive,
   isDesktop,
@@ -25,8 +26,12 @@ function Sidebar({
     ? i18n.resolvedLanguage
     : 'en';
 
-  const handleStationSelect = (station) => {
+  const handleSearchStationSelect = (station) => {
     onSearchChange(station.id);
+    onSelectStation(station);
+  };
+
+  const handlePrioritySelect = (station) => {
     onSelectStation(station);
   };
 
@@ -67,7 +72,7 @@ function Sidebar({
                 <button
                   key={station.id}
                   type="button"
-                  onClick={() => handleStationSelect(station)}
+                  onClick={() => handleSearchStationSelect(station)}
                   className="flex w-full items-center justify-between rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-left text-xs text-slate-100 transition hover:border-slate-500"
                 >
                   <span>{station.id}</span>
@@ -126,37 +131,85 @@ function Sidebar({
       <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-700 bg-slate-900/90 p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">{t('sidebar.criticalPriorities')}</p>
-          <span className="text-xs text-red-300">{t('sidebar.criticalCount', { count: criticalStations.length })}</span>
+          <span className="text-xs text-red-300">
+            {t('sidebar.criticalCount', {
+              count: futureMode ? futureCriticalStations.length : criticalStations.length,
+            })}
+          </span>
         </div>
+
         <div className="space-y-2 overflow-y-auto">
-          {criticalStations.length === 0 && <p className="text-xs text-slate-400">{t('sidebar.noCritical')}</p>}
-          {criticalStations.map((station) => (
-            <button
-              key={station.id}
-              type="button"
-              onClick={() => handleStationSelect(station)}
-              className={`w-full rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-left text-xs text-slate-100 transition hover:border-slate-500 ${
-                redZoneActive ? 'shadow-[0_0_18px_rgba(239,68,68,0.25)]' : ''
-              } ${redZoneActive && station.projectedPercent > 90 ? 'animate-pulse' : ''}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-slate-100">{station.id}</span>
-                <span className="text-slate-500">|</span>
-                <span className={`${
-                  station.status === 'green' ? 'text-emerald-300' :
-                  station.status === 'yellow' ? 'text-amber-300' :
-                  station.status === 'red' ? 'text-red-300' :
-                  'text-slate-300'
-                }`}>{Math.round(station.projectedPercent)}%</span>
-                <span className="text-slate-500">|</span>
-                <span className="text-slate-400">
-                  {station.installDate
-                    ? t('sidebar.years', { count: CURRENT_YEAR - station.installDate })
-                    : t('sidebar.na')}
-                </span>
-              </div>
-            </button>
-          ))}
+          {futureMode && isPredicting && (
+            <div className="rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-3 text-xs text-amber-200">
+              {t('sidebar.calculatingRisks')}
+            </div>
+          )}
+
+          {futureMode &&
+            !isPredicting &&
+            futureCriticalStations.map((station) => {
+              const predictedPercent = Math.round(station.futurePredictedPercent ?? station.projectedPercent);
+              return (
+                <button
+                  key={`future-${station.id}`}
+                  type="button"
+                  onClick={() => handlePrioritySelect(station)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-left text-xs text-slate-100 transition hover:border-slate-500"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-100">{station.id}</span>
+                    <span className="text-red-300">{predictedPercent}% Load</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-400">{station.name}</div>
+                  <div className="mt-1 text-[11px] text-slate-400">{station.district}</div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className={`h-full rounded-full ${predictedPercent >= 90 ? 'bg-red-500' : 'bg-amber-400'}`}
+                      style={{ width: `${Math.min(predictedPercent, 100)}%` }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+
+          {!futureMode &&
+            criticalStations.map((station) => (
+              <button
+                key={station.id}
+                type="button"
+                onClick={() => handlePrioritySelect(station)}
+                className={`w-full rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-left text-xs text-slate-100 transition hover:border-slate-500 ${
+                  redZoneActive ? 'shadow-[0_0_18px_rgba(239,68,68,0.25)]' : ''
+                } ${redZoneActive && station.projectedPercent > 90 ? 'animate-pulse' : ''}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-100">{station.id}</span>
+                  <span className="text-red-300">{Math.round(station.projectedPercent)}% Load</span>
+                </div>
+                <div className="mt-1 text-[11px] text-slate-400">{station.name}</div>
+                <div className="mt-1 text-[11px] text-slate-400">{station.district}</div>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className={`h-full rounded-full ${
+                      station.projectedPercent >= 90
+                        ? 'bg-red-500'
+                        : station.projectedPercent >= 70
+                          ? 'bg-amber-400'
+                          : 'bg-sky-400'
+                    }`}
+                    style={{ width: `${Math.min(Math.round(station.projectedPercent), 100)}%` }}
+                  />
+                </div>
+              </button>
+            ))}
+
+          {futureMode && !isPredicting && futureCriticalStations.length === 0 && (
+            <p className="text-xs text-slate-400">{t('sidebar.noCriticalFuture')}</p>
+          )}
+
+          {!futureMode && criticalStations.length === 0 && (
+            <p className="text-xs text-slate-400">{t('sidebar.noCritical')}</p>
+          )}
         </div>
       </section>
     </div>
@@ -196,6 +249,9 @@ Sidebar.propTypes = {
   onConstructionChange: PropTypes.func.isRequired,
   searchMatches: PropTypes.arrayOf(PropTypes.object).isRequired,
   criticalStations: PropTypes.arrayOf(PropTypes.object).isRequired,
+  futureCriticalStations: PropTypes.arrayOf(PropTypes.object),
+  isPredicting: PropTypes.bool,
+  futureMode: PropTypes.bool,
   onSelectStation: PropTypes.func.isRequired,
   redZoneActive: PropTypes.bool.isRequired,
   isDesktop: PropTypes.bool.isRequired,
@@ -206,6 +262,9 @@ Sidebar.propTypes = {
 Sidebar.defaultProps = {
   open: true,
   onClose: () => {},
+  futureCriticalStations: [],
+  isPredicting: false,
+  futureMode: false,
 };
 
 export default Sidebar;

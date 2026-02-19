@@ -3,6 +3,7 @@ import L from 'leaflet';
 import PropTypes from 'prop-types';
 import { BarChart3, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useEffect, useRef } from 'react';
 
 const INITIAL_CENTER = [41.3111, 69.2797];
 const INITIAL_ZOOM = 12;
@@ -63,20 +64,16 @@ const statusToColor = (status) => {
 };
 
 const loadToColor = (percent, status) => {
-  // If status is provided, use it directly
-  if (status) {
-    return statusToColor(status);
-  }
-  // Otherwise calculate from percent: <50% green, 50-80% yellow, >=80% red
-  if (percent >= 80) return '#f87171';
-  if (percent >= 50) return '#eab308';
-  return '#22c55e';
+  if (percent >= 90) return '#ef4444';
+  if (percent >= 70) return '#f59e0b';
+  if (status) return statusToColor(status);
+  return '#38bdf8';
 };
 
-const createCurrentTpIcon = (color, scale, isFocused) => {
+const createCurrentTpIcon = (color, scale, isFocused, isHighLoad) => {
   const size = 30 * scale;
   return L.divIcon({
-    html: `<span class="grid-marker ${isFocused ? 'ring ring-offset-2 ring-sky-400 ring-offset-slate-900' : ''}" style="background:${color};width:${size}px;height:${size}px;"><span class="grid-zap">⚡</span></span>`,
+    html: `<span class="grid-marker ${isFocused ? 'ring ring-offset-2 ring-sky-400 ring-offset-slate-900' : ''} ${isHighLoad ? 'grid-marker-high' : ''}" style="background:${color};width:${size}px;height:${size}px;"><span class="grid-zap">⚡</span></span>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size - 6],
     popupAnchor: [0, -18],
@@ -108,6 +105,15 @@ function MapView({
   const { t } = useTranslation();
   const suggestedTpIcon = createSuggestedTpIcon();
   const futureSuggestions = futurePrediction?.suggested_tps || [];
+  const markerRefs = useRef({});
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const marker = markerRefs.current[selectedId];
+    if (marker && marker.openPopup) {
+      marker.openPopup();
+    }
+  }, [selectedId]);
 
   const getRiskLabel = (riskLabel) => {
     const normalized = (riskLabel || '').toLowerCase();
@@ -149,11 +155,19 @@ function MapView({
       {stations.map((station) => (
         <Marker
           key={station.id}
+          ref={(marker) => {
+            if (marker) {
+              markerRefs.current[station.id] = marker;
+            }
+          }}
           position={station.coordinates}
           icon={createCurrentTpIcon(
-            selectedId === station.id ? '#38bdf8' : loadToColor(station.projectedPercent, station.status),
-            station.markerScale || 1,
             selectedId === station.id
+              ? '#38bdf8'
+              : loadToColor(station.futurePredictedPercent ?? station.projectedPercent, station.status),
+            station.markerScale || 1,
+            selectedId === station.id,
+            (station.futurePredictedPercent ?? station.projectedPercent) >= 90
           )}
           eventHandlers={{
             click: () => {
@@ -174,7 +188,9 @@ function MapView({
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">{t('map.load')}:</span>
-                  <span className="font-semibold text-slate-100">{station.projectedPercent}%</span>
+                  <span className="font-semibold text-slate-100">
+                    {Math.round(station.futurePredictedPercent ?? station.projectedPercent)}%
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">{t('map.capacityUtilization')}:</span>
@@ -266,6 +282,7 @@ MapView.propTypes = {
       coordinates: PropTypes.arrayOf(PropTypes.number).isRequired,
       district: PropTypes.string.isRequired,
       projectedPercent: PropTypes.number.isRequired,
+      futurePredictedPercent: PropTypes.number,
       projectedKva: PropTypes.number.isRequired,
       capacity_kva: PropTypes.number.isRequired,
       riskLabel: PropTypes.string.isRequired,
@@ -302,6 +319,12 @@ MapView.propTypes = {
       PropTypes.shape({
         district: PropTypes.string,
         load_percentage: PropTypes.number,
+      })
+    ),
+    station_predictions: PropTypes.arrayOf(
+      PropTypes.shape({
+        id: PropTypes.string,
+        predicted_load_pct: PropTypes.number,
       })
     ),
     suggested_tps: PropTypes.arrayOf(

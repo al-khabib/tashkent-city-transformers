@@ -15,6 +15,8 @@
     "criticalPriorities": "Critical Priorities",
     "criticalCount": "{{count}} red",
     "noCritical": "No red transformers under current simulation.",
+    "noCriticalFuture": "No critical transformers found for the selected future date.",
+    "calculatingRisks": "Calculating Risks...",
     "age": "Age",
     "years": "{{count}}y",
     "na": "n/a"

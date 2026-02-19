@@ -20,17 +20,16 @@ export function calculateProjectedLoad(station, { temperature, construction }) {
 
   const projectedKva = (currentLoad / 100) * station.capacity_kva;
   
-  // Determine status based on projected load (temperature/construction adjusted)
-  // This allows status to change when conditions change
+  // Determine status bands for safe/medium/high load.
   let status, riskLabel, isCritical;
   
-  if (projectedPercent < 50) {
+  if (projectedPercent < 70) {
     status = 'green';
     riskLabel = 'Stable';
     isCritical = false;
-  } else if (projectedPercent < 80) {
+  } else if (projectedPercent < 90) {
     status = 'yellow';
-    riskLabel = 'Stable';
+    riskLabel = 'Watch';
     isCritical = false;
   } else {
     status = 'red';

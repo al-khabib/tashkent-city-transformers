@@ -1,11 +1,8 @@
 import math
+import random
 from datetime import date, datetime
 from typing import Any, Dict
 
-import numpy as np
-from sklearn.cluster import KMeans
-
-from server.constants import DISTRICT_CENTERS
 from server.state import RuntimeState
 from server.utils import parse_target_date
 
@@ -120,85 +117,138 @@ def seasonal_pressure_note(target_date_iso: str) -> str:
 
 
 
-def make_suggested_tp_points(district: str, transformers_needed: int, overload_scale: float) -> list[Dict[str, Any]]:
-    if transformers_needed <= 0:
-        return []
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
-    center = DISTRICT_CENTERS.get(district, [41.3111, 69.2797])
-    sample_count = max(10, transformers_needed * 8)
-    jitter = 0.007 + min(0.02, overload_scale / 1000)
-    points = np.column_stack(
-        [
-            np.random.normal(center[0], jitter, sample_count),
-            np.random.normal(center[1], jitter, sample_count),
-        ]
-    )
 
-    cluster_count = min(transformers_needed, len(points))
-    if cluster_count <= 0:
-        return []
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
 
-    kmeans = KMeans(n_clusters=cluster_count, random_state=42, n_init=10)
-    kmeans.fit(points)
 
-    centers = kmeans.cluster_centers_
-    label_counts = np.bincount(kmeans.labels_, minlength=cluster_count)
-    total_samples = max(1, int(label_counts.sum()))
+def _point_within_radius_km(center: list[float], min_km: float, max_km: float) -> list[float]:
+    lat, lon = center
+    distance_km = random.uniform(min_km, max_km)
+    bearing = random.uniform(0.0, 2.0 * math.pi)
 
-    return [
-        {
-            "id": f"{district}-tp-{index}",
-            "district": district,
-            "coordinates": [round(value[0], 6), round(value[1], 6)],
-            "cluster_share_pct": round((label_counts[index - 1] / total_samples) * 100, 1),
-        }
-        for index, value in enumerate(centers.tolist(), start=1)
-    ]
+    delta_lat = (distance_km / 111.0) * math.cos(bearing)
+    lat_rad = math.radians(lat)
+    lon_divisor = max(1e-6, 111.0 * math.cos(lat_rad))
+    delta_lon = (distance_km / lon_divisor) * math.sin(bearing)
+
+    return [round(lat + delta_lat, 6), round(lon + delta_lon, 6)]
+
+
+def _build_station_future_projection(
+    stations: list[Dict[str, Any]],
+    district_prediction_map: Dict[str, Dict[str, Any]],
+) -> list[Dict[str, Any]]:
+    district_weights: Dict[str, list[float]] = {}
+    for station in stations:
+        district = str(station.get("district", "")).strip().lower()
+        district_weights.setdefault(district, []).append(_safe_float(station.get("load_weight"), 50.0))
+
+    district_avg_weight = {
+        district: (sum(weights) / max(1, len(weights)))
+        for district, weights in district_weights.items()
+    }
+
+    projected_stations = []
+    for station in stations:
+        district_key = str(station.get("district", "")).strip().lower()
+        district_prediction = district_prediction_map.get(district_key, {})
+        district_load_pct = _safe_float(district_prediction.get("load_percentage"), 0.0)
+
+        station_weight = _safe_float(station.get("load_weight"), 50.0)
+        avg_weight = max(1.0, _safe_float(district_avg_weight.get(district_key), 50.0))
+        scaling_factor = station_weight / avg_weight
+        predicted_load_pct = _clamp(district_load_pct * scaling_factor, 0.0, 180.0)
+
+        capacity_kva = max(1.0, _safe_float(station.get("capacity_kva"), 100.0))
+        projected_stations.append(
+            {
+                "id": station.get("id"),
+                "name": station.get("name"),
+                "district": district_key,
+                "district_label": station.get("district"),
+                "coordinates": station.get("coordinates"),
+                "capacity_kva": capacity_kva,
+                "predicted_load_pct": round(predicted_load_pct, 2),
+                "predicted_load_kva": round((predicted_load_pct / 100.0) * capacity_kva, 2),
+            }
+        )
+
+    return projected_stations
+
+
+def _build_proximity_suggestions(
+    stations_future: list[Dict[str, Any]],
+    district_prediction_map: Dict[str, Dict[str, Any]],
+) -> list[Dict[str, Any]]:
+    suggestions: list[Dict[str, Any]] = []
+    counters: Dict[str, int] = {}
+
+    stressed_anchors = [station for station in stations_future if station["predicted_load_pct"] >= 70.0]
+    district_to_anchors: Dict[str, list[Dict[str, Any]]] = {}
+    for anchor in stressed_anchors:
+        district_to_anchors.setdefault(anchor["district"], []).append(anchor)
+
+    for district, prediction in district_prediction_map.items():
+        anchors = district_to_anchors.get(district, [])
+        if not anchors:
+            continue
+
+        transformers_needed = int(prediction.get("transformers_needed", 0))
+        months_ahead = int(prediction.get("months_ahead", 1))
+        time_scale_factor = 1.0
+        if months_ahead > 12:
+            time_scale_factor = 2.0
+        elif months_ahead > 6:
+            time_scale_factor = 1.5
+
+        suggestion_count = max(1, int(math.ceil(transformers_needed * time_scale_factor)))
+
+        for index in range(suggestion_count):
+            anchor = anchors[index % len(anchors)]
+            anchor_coordinates = anchor.get("coordinates") or [41.3111, 69.2797]
+            if len(anchor_coordinates) != 2:
+                anchor_coordinates = [41.3111, 69.2797]
+
+            counters[district] = counters.get(district, 0) + 1
+            suggestion_id = f"{district}-tp-{counters[district]}"
+            suggestions.append(
+                {
+                    "id": suggestion_id,
+                    "district": district,
+                    "coordinates": _point_within_radius_km(anchor_coordinates, min_km=0.2, max_km=0.5),
+                    "cluster_share_pct": round(100.0 / max(1, suggestion_count), 1),
+                    "anchor_station_id": anchor["id"],
+                    "anchor_station_name": anchor.get("name"),
+                    "anchor_predicted_load_pct": anchor["predicted_load_pct"],
+                }
+            )
+
+    return suggestions
 
 
 
 def build_prediction_response(state: RuntimeState, target_date: str, all_stations: list[Dict[str, Any]]) -> Dict[str, Any]:
     district_predictions = []
-    suggested_tps = []
 
     for district in state.known_districts:
         prediction = predict_grid_load(state, district, target_date)
         district_predictions.append(prediction)
 
-        critical_transformers = [s for s in all_stations if s["district"] == district.title() and s["status"] == "red"]
-
-        if critical_transformers:
-            for i, critical_tf in enumerate(critical_transformers):
-                lat = critical_tf["coordinates"][0] + np.random.uniform(-0.002, 0.002)
-                lon = critical_tf["coordinates"][1] + np.random.uniform(-0.002, 0.002)
-                suggested_tps.append(
-                    {
-                        "id": f"{district}-tp-{i + 1}",
-                        "district": district,
-                        "coordinates": [round(lat, 6), round(lon, 6)],
-                        "cluster_share_pct": 20.0,
-                    }
-                )
-        elif prediction["predicted_load_mw"] > prediction["current_capacity_mw"]:
-            transformers_needed = prediction["transformers_needed"]
-            months_ahead = prediction.get("months_ahead", 1)
-
-            time_scale_factor = 1.0
-            if months_ahead > 12:
-                time_scale_factor = 2.0
-            elif months_ahead > 6:
-                time_scale_factor = 1.5
-
-            scaled_transformers_needed = max(1, int(transformers_needed * time_scale_factor))
-            suggested_tps.extend(
-                make_suggested_tp_points(
-                    district,
-                    scaled_transformers_needed,
-                    max(0.0, prediction["load_gap_mw"]),
-                )
-            )
-
     district_prediction_map = {entry["district"]: entry for entry in district_predictions}
+    stations_future = _build_station_future_projection(all_stations, district_prediction_map)
+    suggested_tps = _build_proximity_suggestions(stations_future, district_prediction_map)
+    critical_priority = sorted(
+        stations_future,
+        key=lambda station: station["predicted_load_pct"],
+        reverse=True,
+    )[:5]
 
     for point in suggested_tps:
         district_prediction = district_prediction_map.get(point["district"], {})
@@ -274,7 +324,9 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
         "target_date": target_date,
         "generated_at": datetime.utcnow().isoformat(),
         "district_predictions": district_predictions,
+        "station_predictions": stations_future,
         "suggested_tps": suggested_tps,
+        "critical_priority": critical_priority,
         "total_transformers_needed": int(sum(entry["transformers_needed"] for entry in district_predictions)),
     }
 
@@ -282,6 +334,8 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
         "mode": "prediction",
         "target_date": target_date,
         "district_predictions": district_predictions,
+        "station_predictions": stations_future,
+        "critical_priority": critical_priority,
         "suggested_tps": suggested_tps,
         "total_transformers_needed": future_state["total_transformers_needed"],
         "future_state": future_state,

@@ -132,6 +132,41 @@ function App() {
     [stations, analyticsId]
   );
 
+  const stationById = useMemo(
+    () => new Map(stations.map((station) => [station.id, station])),
+    [stations]
+  );
+
+  const futurePriorityStations = useMemo(() => {
+    const items = futureData?.critical_priority || [];
+    return items
+      .map((item) => {
+        const station = stationById.get(item.id);
+        if (!station) return null;
+        return {
+          ...station,
+          futurePredictedPercent: item.predicted_load_pct,
+          futurePredictedKva: item.predicted_load_kva,
+        };
+      })
+      .filter(Boolean);
+  }, [futureData, stationById]);
+
+  const stationsWithFutureLoad = useMemo(() => {
+    if (!futureMode || !futureData?.station_predictions?.length) {
+      return filteredStations;
+    }
+    const futureById = new Map(
+      futureData.station_predictions.map((item) => [item.id, item.predicted_load_pct])
+    );
+    return filteredStations.map((station) => ({
+      ...station,
+      futurePredictedPercent: futureById.has(station.id)
+        ? futureById.get(station.id)
+        : station.projectedPercent,
+    }));
+  }, [filteredStations, futureData, futureMode]);
+
   const flyToStation = (station) => {
     setSelectedId(station.id);
     if (mapRef.current) {
@@ -158,6 +193,9 @@ function App() {
           onConstructionChange={setConstruction}
           searchMatches={searchMatches}
           criticalStations={criticalStations}
+          futureCriticalStations={futurePriorityStations}
+          isPredicting={futureLoading}
+          futureMode={futureMode}
           onSelectStation={flyToStation}
           redZoneActive={redZoneActive}
           isDesktop
@@ -175,7 +213,7 @@ function App() {
         />
 
         <MapView
-          stations={filteredStations}
+          stations={stationsWithFutureLoad}
           allStations={stations}
           selectedId={selectedId}
           onStationSelect={flyToStation}
@@ -198,6 +236,9 @@ function App() {
           onConstructionChange={setConstruction}
           searchMatches={searchMatches}
           criticalStations={criticalStations}
+          futureCriticalStations={futurePriorityStations}
+          isPredicting={futureLoading}
+          futureMode={futureMode}
           onSelectStation={flyToStation}
           redZoneActive={redZoneActive}
           isDesktop={false}
