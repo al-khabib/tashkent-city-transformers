@@ -29,7 +29,7 @@ def month_range(start_year: int, start_month: int, periods: int):
 
 def main() -> None:
     random.seed(42)
-    base_dir = os.path.dirname(__file__)
+    base_dir = os.path.dirname(os.path.dirname(__file__))
     output_path = os.path.join(base_dir, "tashkent_grid_historic_data.csv")
 
     headers = [

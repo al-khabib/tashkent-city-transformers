@@ -12,7 +12,7 @@ def main() -> None:
 
     if not os.path.exists(csv_path):
         raise FileNotFoundError(
-            f"Dataset not found at {csv_path}. Run generate_mock_data.py first."
+            f"Dataset not found at {csv_path}. Run python server/generate_mock_data.py first."
         )
 
     df = pd.read_csv(csv_path)

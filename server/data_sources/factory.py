@@ -1,7 +1,7 @@
-from backend.config import Settings
-from backend.data_sources.api_provider import CompanyApiGridDataProvider
-from backend.data_sources.base import GridDataProvider
-from backend.data_sources.csv_provider import CsvGridDataProvider
+from server.config import Settings
+from server.data_sources.api_provider import CompanyApiGridDataProvider
+from server.data_sources.base import GridDataProvider
+from server.data_sources.csv_provider import CsvGridDataProvider
 
 
 

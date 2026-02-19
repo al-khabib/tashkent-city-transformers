@@ -2,8 +2,8 @@ from typing import Any, Dict
 
 import numpy as np
 
-from backend.constants import DISTRICT_CENTERS
-from backend.state import RuntimeState
+from server.constants import DISTRICT_CENTERS
+from server.state import RuntimeState
 
 
 

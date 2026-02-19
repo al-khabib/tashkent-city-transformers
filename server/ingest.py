@@ -8,8 +8,12 @@ from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
+def _project_root() -> str:
+    return os.path.dirname(os.path.dirname(__file__))
+
+
 def _load_env() -> None:
-    base_dir = os.path.dirname(__file__)
+    base_dir = _project_root()
     for env_path in (os.path.join(base_dir, ".env"), os.path.join(base_dir, "server", ".env")):
         if os.path.exists(env_path):
             load_dotenv(dotenv_path=env_path)
@@ -18,7 +22,7 @@ def _load_env() -> None:
 def main() -> None:
     _load_env()
 
-    base_dir = os.path.dirname(__file__)
+    base_dir = _project_root()
     data_dir = os.path.join(base_dir, "data")
     chroma_dir = os.path.join(base_dir, "chroma_db")
     ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")

@@ -8,8 +8,10 @@ Current backend mode is **prediction-focused** (law RAG is not used in runtime f
 
 ## Project Structure
 
-- `backend/`: FastAPI app package (`app.py`, config, runtime state, services)
-- `main.py`: thin compatibility entrypoint (`from backend.app import app`)
+- `server/`: FastAPI app package (`app.py`, config, runtime state, services)
+- `server/main.py`: backend run entrypoint
+- `server/ingest.py`: document indexing script
+- `server/generate_mock_data.py`: synthetic dataset generator
 - `src/`: React frontend
 - `model/`: model training script and optional artifacts
 - `data/`: PDF source documents
@@ -89,7 +91,7 @@ If you already have them (for example in `model/`), skip generation and set env 
 If you need to generate/train from scratch:
 
 ```bash
-python generate_mock_data.py
+python server/generate_mock_data.py
 python model/train_model.py
 ```
 
@@ -152,7 +154,7 @@ VITE_DEBUG_FLOW=true
 ## 5) Start Backend (Recommended)
 
 ```bash
-python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+python -m uvicorn server.app:app --host 127.0.0.1 --port 8000
 ```
 
 Health check:
@@ -170,7 +172,7 @@ You should see JSON with:
 Alternative (also works):
 
 ```bash
-python main.py
+python -m server.main
 ```
 
 ## 5.1) Stop Backend
@@ -285,10 +287,10 @@ Expected:
 
 ## 9) Developer Notes
 
-- `ingest.py` exists for document indexing, but prediction runtime does not require it.
+- `server/ingest.py` exists for document indexing, but prediction runtime does not require it.
 - `text.py` is a helper script for manual API ping tests.
 - Main runtime entrypoints:
-  - Backend: `main.py`
+  - Backend: `server/main.py`
   - Frontend: `src/components/Chatbot.jsx`, `src/App.jsx`
 
 ---

@@ -2,8 +2,8 @@ import os
 
 import pandas as pd
 
-from backend.data_sources.base import GridDataProvider
-from backend.data_sources.normalization import normalize_district_dataframe
+from server.data_sources.base import GridDataProvider
+from server.data_sources.normalization import normalize_district_dataframe
 
 
 class CsvGridDataProvider(GridDataProvider):

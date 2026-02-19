@@ -8,13 +8,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.config import get_settings
-from backend.schemas import ChatQuery, PredictRequest
-from backend.services.chat_service import translate_from_english, translate_to_english
-from backend.services.prediction_service import build_prediction_response
-from backend.services.station_service import generate_stations_from_csv
-from backend.state import create_runtime_state
-from backend.utils import detect_language_fast
+from server.config import get_settings
+from server.schemas import ChatQuery, PredictRequest
+from server.services.chat_service import translate_from_english, translate_to_english
+from server.services.prediction_service import build_prediction_response
+from server.services.station_service import generate_stations_from_csv
+from server.state import create_runtime_state
+from server.utils import detect_language_fast
 
 logger = logging.getLogger("grid-backend")
 logging.basicConfig(level=logging.INFO)

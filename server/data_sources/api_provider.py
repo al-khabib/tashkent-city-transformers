@@ -3,8 +3,8 @@ from urllib import request
 
 import pandas as pd
 
-from backend.data_sources.base import GridDataProvider
-from backend.data_sources.normalization import normalize_district_dataframe
+from server.data_sources.base import GridDataProvider
+from server.data_sources.normalization import normalize_district_dataframe
 
 
 class CompanyApiGridDataProvider(GridDataProvider):

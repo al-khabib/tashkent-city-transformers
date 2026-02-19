@@ -5,8 +5,8 @@ import joblib
 import pandas as pd
 from langchain_community.llms import Ollama
 
-from backend.config import Settings
-from backend.data_sources.factory import build_data_provider
+from server.config import Settings
+from server.data_sources.factory import build_data_provider
 
 
 @dataclass
