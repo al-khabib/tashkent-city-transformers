@@ -3,6 +3,7 @@ import logging
 import os
 import time
 import uuid
+from requests.exceptions import RequestException
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +11,9 @@ from fastapi.responses import JSONResponse
 
 from server.config import get_settings
 from server.schemas import ChatQuery, PredictRequest
-from server.services.chat_service import translate_from_english, translate_to_english
 from server.services.prediction_service import build_prediction_response
 from server.services.station_service import generate_stations_from_csv
 from server.state import create_runtime_state
-from server.utils import detect_language_fast
 
 logger = logging.getLogger("grid-backend")
 logging.basicConfig(level=logging.INFO)
@@ -127,34 +126,46 @@ async def ask_question(item: ChatQuery, request: Request):
 
         context_snapshot = item.context_snapshot or item.context or {}
 
-        user_language = detect_language_fast(query)
-        query_en = translate_to_english(query, user_language, state)
-
         future_context = (
             json.dumps(state.future_state, ensure_ascii=True)
             if state.future_state
             else "No future mode prediction has been generated yet."
         )
+        prompt = (
+            "You are Grid AI Assistant for Tashkent power planning.\n"
+            "Always answer in English.\n"
+            "Use the future mode state and context snapshot as the source of truth when available.\n"
+            "Keep responses practical, concise, and operations-focused.\n"
+            "If the user asks for prediction guidance, give a short summary and concrete action.\n"
+            "Do not invent missing metrics; say when data is unavailable.\n\n"
+            f"Future mode state: {future_context}\n"
+            f"Client context snapshot: {json.dumps(context_snapshot, ensure_ascii=True)}\n"
+            f"User question: {query}\n"
+            "Assistant response:"
+        )
 
-        answer_en = str(
-            state.llm.invoke(
-                "You are now synced with the Map Future Mode.\n"
-                "When a date is selected, provide only a concise prediction summary.\n"
-                "Do not explain reasons behind suggested TP installations unless the user explicitly asks why.\n"
-                "Keep the answer short, practical, and focused on what will happen.\n\n"
-                f"Future mode state: {future_context}\n"
-                f"Client context snapshot: {json.dumps(context_snapshot, ensure_ascii=True)}\n"
-                f"User question: {query_en}\n"
-                "Respond with practical guidance for the Mayor."
-            )
-        ).strip()
-
-        answer = translate_from_english(answer_en, user_language, state)
+        try:
+            answer = str(state.llm.invoke(prompt)).strip()
+        except RequestException as error:
+            logger.warning("ask_question failed: Ollama request error: %s", error)
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": (
+                        f"Ollama is unreachable at {settings.ollama_base_url}. "
+                        f"Start Ollama and make sure model '{settings.ollama_llm_model}' is available "
+                        "(example: `ollama serve` and `ollama pull "
+                        f"{settings.ollama_llm_model}`)."
+                    ),
+                    "request_id": request.state.request_id,
+                    "error": str(error),
+                },
+            ) from error
         return {
             "answer": answer,
             "request_id": request.state.request_id,
             "mode": "future_chat",
-            "user_language": user_language,
+            "language": "en",
             "future_state": state.future_state,
         }
     except HTTPException:

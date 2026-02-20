@@ -71,6 +71,7 @@ def predict_grid_load(state: RuntimeState, district: str, target_date: str) -> D
             "commercial_infra_count": float(current["commercial_infra_count"]),
             "months_ahead": months_ahead,
         },
+        "feature_projection": _build_feature_projection(state, district_key, months_ahead),
     }
 
 
@@ -141,6 +142,68 @@ def _point_within_radius_km(center: list[float], min_km: float, max_km: float) -
     return [round(lat + delta_lat, 6), round(lon + delta_lon, 6)]
 
 
+def _project_feature_value(
+    district_rows,
+    column: str,
+    months_ahead: int,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> Dict[str, float]:
+    series = district_rows[column].astype(float).dropna().tail(12)
+    if series.empty:
+        return {"current": 0.0, "projected": 0.0, "delta": 0.0}
+
+    current = float(series.iloc[-1])
+    if len(series) >= 2:
+        monthly_change = (float(series.iloc[-1]) - float(series.iloc[0])) / float(len(series) - 1)
+    else:
+        monthly_change = 0.0
+
+    projected = current + (monthly_change * months_ahead)
+    if min_value is not None:
+        projected = max(min_value, projected)
+    if max_value is not None:
+        projected = min(max_value, projected)
+
+    return {
+        "current": current,
+        "projected": projected,
+        "delta": projected - current,
+    }
+
+
+def _build_feature_projection(state: RuntimeState, district: str, months_ahead: int) -> Dict[str, Any]:
+    district_rows = state.district_df[state.district_df["district"] == district].sort_values("snapshot_date")
+    if district_rows.empty:
+        return {"months_since_start": months_ahead}
+
+    district_rating = _project_feature_value(district_rows, "district_rating", months_ahead, min_value=1.0, max_value=5.0)
+    population_density = _project_feature_value(district_rows, "population_density", months_ahead, min_value=0.0)
+    avg_temp = _project_feature_value(district_rows, "avg_temp", months_ahead, min_value=-40.0, max_value=60.0)
+    asset_age = _project_feature_value(district_rows, "asset_age", months_ahead, min_value=0.0)
+    # Asset age naturally advances with time, even if historical trend is flat.
+    asset_age["projected"] = max(asset_age["projected"], asset_age["current"] + (months_ahead / 12.0))
+    asset_age["delta"] = asset_age["projected"] - asset_age["current"]
+    commercial_infra_count = _project_feature_value(district_rows, "commercial_infra_count", months_ahead, min_value=0.0)
+
+    return {
+        "district_rating": district_rating,
+        "population_density": population_density,
+        "avg_temp": avg_temp,
+        "asset_age": asset_age,
+        "commercial_infra_count": commercial_infra_count,
+        "months_since_start": int(months_ahead),
+    }
+
+
+def _fmt_feature_shift(feature: Dict[str, float], decimals: int = 1) -> str:
+    current = round(float(feature.get("current", 0.0)), decimals)
+    projected = round(float(feature.get("projected", 0.0)), decimals)
+    delta = round(float(feature.get("delta", 0.0)), decimals)
+    sign = "+" if delta >= 0 else ""
+    return f"{current} -> {projected} ({sign}{delta})"
+
+
 def _build_station_future_projection(
     stations: list[Dict[str, Any]],
     district_prediction_map: Dict[str, Dict[str, Any]],
@@ -190,25 +253,33 @@ def _build_proximity_suggestions(
     suggestions: list[Dict[str, Any]] = []
     counters: Dict[str, int] = {}
 
-    stressed_anchors = [station for station in stations_future if station["predicted_load_pct"] >= 70.0]
+    # Only use overloaded stations as anchor points for new TP suggestions.
+    anchor_threshold = 100.0
+    stressed_anchors = [
+        station for station in stations_future if station["predicted_load_pct"] >= anchor_threshold
+    ]
     district_to_anchors: Dict[str, list[Dict[str, Any]]] = {}
     for anchor in stressed_anchors:
         district_to_anchors.setdefault(anchor["district"], []).append(anchor)
 
     for district, prediction in district_prediction_map.items():
+        load_gap_kva = _safe_float(prediction.get("load_gap_kva"), 0.0)
+        transformers_needed = int(prediction.get("transformers_needed", 0))
+        if load_gap_kva <= 0 or transformers_needed <= 0:
+            continue
+
         anchors = district_to_anchors.get(district, [])
         if not anchors:
             continue
 
-        transformers_needed = int(prediction.get("transformers_needed", 0))
         months_ahead = int(prediction.get("months_ahead", 1))
-        time_scale_factor = 1.0
-        if months_ahead > 12:
-            time_scale_factor = 2.0
-        elif months_ahead > 6:
-            time_scale_factor = 1.5
+        years_ahead = max(1, int(math.ceil(months_ahead / 12.0)))
+        time_scale_factor = 1.0 + (0.35 * max(0, years_ahead - 1))
+        scaled_need = int(math.ceil(transformers_needed * time_scale_factor))
 
-        suggestion_count = max(1, int(math.ceil(transformers_needed * time_scale_factor)))
+        suggestion_count = max(transformers_needed, scaled_need)
+        if months_ahead >= 24:
+            suggestion_count += max(1, int(math.ceil(transformers_needed * 0.15)))
 
         for index in range(suggestion_count):
             anchor = anchors[index % len(anchors)]
@@ -244,6 +315,11 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
     district_prediction_map = {entry["district"]: entry for entry in district_predictions}
     stations_future = _build_station_future_projection(all_stations, district_prediction_map)
     suggested_tps = _build_proximity_suggestions(stations_future, district_prediction_map)
+    district_suggestion_counts: Dict[str, int] = {}
+    for point in suggested_tps:
+        district_key = str(point.get("district", "")).strip().lower()
+        district_suggestion_counts[district_key] = district_suggestion_counts.get(district_key, 0) + 1
+
     critical_priority = sorted(
         stations_future,
         key=lambda station: station["predicted_load_pct"],
@@ -252,8 +328,7 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
 
     for point in suggested_tps:
         district_prediction = district_prediction_map.get(point["district"], {})
-        affecting = district_prediction.get("affecting_factors", {})
-        trends = district_factor_trends(state, point["district"])
+        feature_projection = district_prediction.get("feature_projection", {})
 
         predicted_load_kva = float(district_prediction.get("predicted_load_kva", 0))
         current_capacity_kva = float(district_prediction.get("current_capacity_kva", 0))
@@ -265,6 +340,7 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
         current_capacity_kva = 0 if current_capacity_kva != current_capacity_kva else current_capacity_kva
         load_gap_kva = 0 if load_gap_kva != load_gap_kva else load_gap_kva
         load_percentage = 0 if load_percentage != load_percentage else load_percentage
+        load_gap_kva = max(0.0, load_gap_kva)
 
         point["target_date"] = district_prediction.get("target_date", target_date)
         point["expected_load_kva"] = round(float(predicted_load_kva), 1)
@@ -274,7 +350,7 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
         point["load_gap_kva"] = round(float(load_gap_kva), 1)
         point["load_gap_mw"] = round(float(load_gap_kva / 1000), 2)
         point["load_percentage"] = round(float(load_percentage), 2)
-        point["transformers_needed"] = int(district_prediction.get("transformers_needed", 0))
+        point["transformers_needed"] = int(district_suggestion_counts.get(point["district"], 0))
         point["cluster_load_gap_kva"] = round((cluster_share_pct / 100.0) * max(load_gap_kva, 0.0), 1)
 
         expected_load_display = int(point["expected_load_kva"]) if point["expected_load_kva"] >= 0 else 0
@@ -293,6 +369,16 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
             max(0, int(math.ceil((load_gap_kva / max(current_capacity_kva, 1)) * current_tp_count))),
         )
 
+        district_rating_shift = _fmt_feature_shift(feature_projection.get("district_rating", {}), decimals=1)
+        density_shift = _fmt_feature_shift(feature_projection.get("population_density", {}), decimals=0)
+        temp_shift = _fmt_feature_shift(feature_projection.get("avg_temp", {}), decimals=1)
+        age_shift = _fmt_feature_shift(feature_projection.get("asset_age", {}), decimals=1)
+        commercial_shift = _fmt_feature_shift(
+            feature_projection.get("commercial_infra_count", {}),
+            decimals=0,
+        )
+        months_since_start = int(feature_projection.get("months_since_start", district_prediction.get("months_ahead", 1)))
+
         point["reasons"] = [
             (
                 f"Capacity shortfall is {point['load_gap_kva']:.0f} kVA on {point['target_date']}; "
@@ -303,13 +389,19 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
                 "are likely to run above safe limits at peak hours, increasing outage/shutdown risk."
             ),
             (
-                "Main stress drivers: "
-                f"population trend {trends['population_pct']}%, "
-                f"commercial growth {trends['commercial_pct']}%, "
-                f"temperature indicator {round(float(affecting.get('avg_temp', 0)), 1)}C. "
+                "Model input trajectory for this date: "
+                f"district rating {district_rating_shift}, "
+                f"population density {density_shift} people/km2, "
+                f"average temperature {temp_shift}C, "
+                f"asset age {age_shift} years, "
+                f"commercial infrastructure count {commercial_shift}, "
+                f"months_since_start {months_since_start}. "
                 f"{seasonal_pressure_note(point['target_date'])}"
             ),
-            f"Estimated expansion need for transformer group: {point['transformers_needed']} new unit(s).",
+            (
+                f"Recommended action: add {point['transformers_needed']} new TP unit(s) in this cluster by "
+                f"{point['target_date']} to close the projected deficit and keep utilization within safe limits."
+            ),
         ]
 
         point["recommendation"] = (

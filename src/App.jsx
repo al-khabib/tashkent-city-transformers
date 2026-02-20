@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import MapView from './components/MapView.jsx';
-import Sidebar from './components/Sidebar.jsx';
-import ControlPanel from './components/ControlPanel.jsx';
 import AnalyticsModal from './components/AnalyticsModal.jsx';
 import TimeControlPanel from './components/TimeControlPanel.jsx';
+import Chatbot from './components/Chatbot.jsx';
 import { useGridStress } from './hooks/useGridStress.js';
 
 const API_BASE_URL = (
@@ -11,12 +10,7 @@ const API_BASE_URL = (
 ).replace(/\/+$/, '');
 
 function App() {
-  const [searchTerm, setSearchTerm] = useState('');
   const [selectedId, setSelectedId] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
-  );
   const [analyticsId, setAnalyticsId] = useState(null);
   const [futureMode, setFutureMode] = useState(false);
   const [futureDate, setFutureDate] = useState(null);
@@ -24,7 +18,6 @@ function App() {
   const [futureLoading, setFutureLoading] = useState(false);
   const [activeSuggestedTp, setActiveSuggestedTp] = useState(null);
   const [backendStations, setBackendStations] = useState([]);
-  const [stationsLoading, setStationsLoading] = useState(true);
   const mapRef = useRef(null);
   const futureDateKey = useMemo(
     () => (futureDate ? futureDate.toISOString().slice(0, 10) : null),
@@ -35,7 +28,6 @@ function App() {
   useEffect(() => {
     const controller = new AbortController();
     const fetchStations = async () => {
-      setStationsLoading(true);
       try {
         const response = await fetch(`${API_BASE_URL}/api/stations`, {
           signal: controller.signal,
@@ -50,8 +42,6 @@ function App() {
           console.error('[App] Failed to fetch backend stations:', error);
           setBackendStations([]);
         }
-      } finally {
-        setStationsLoading(false);
       }
     };
     fetchStations();
@@ -61,27 +51,9 @@ function App() {
   const {
     stations,
     filteredStations,
-    searchMatches,
-    criticalStations,
-    redZoneActive,
     temperature,
     construction,
-    setTemperature,
-    setConstruction,
-  } = useGridStress(backendStations, searchTerm);
-
-  useEffect(() => {
-    const handleResize = () => {
-      const desktop = window.innerWidth >= 1024;
-      setIsDesktop(desktop);
-      if (desktop) {
-        setSidebarOpen(false);
-      }
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  } = useGridStress(backendStations, '');
 
   useEffect(() => {
     if (!futureMode || !futureDateKey) {
@@ -132,26 +104,6 @@ function App() {
     [stations, analyticsId]
   );
 
-  const stationById = useMemo(
-    () => new Map(stations.map((station) => [station.id, station])),
-    [stations]
-  );
-
-  const futurePriorityStations = useMemo(() => {
-    const items = futureData?.critical_priority || [];
-    return items
-      .map((item) => {
-        const station = stationById.get(item.id);
-        if (!station) return null;
-        return {
-          ...station,
-          futurePredictedPercent: item.predicted_load_pct,
-          futurePredictedKva: item.predicted_load_kva,
-        };
-      })
-      .filter(Boolean);
-  }, [futureData, stationById]);
-
   const stationsWithFutureLoad = useMemo(() => {
     if (!futureMode || !futureData?.station_predictions?.length) {
       return filteredStations;
@@ -172,9 +124,6 @@ function App() {
     if (mapRef.current) {
       mapRef.current.flyTo(station.coordinates, 13.2, { duration: 1.1 });
     }
-    if (!isDesktop) {
-      setSidebarOpen(false);
-    }
   };
 
   const handleMapReady = (mapInstance) => {
@@ -183,27 +132,7 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-      {isDesktop && (
-        <Sidebar
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          temperature={temperature}
-          onTemperatureChange={setTemperature}
-          construction={construction}
-          onConstructionChange={setConstruction}
-          searchMatches={searchMatches}
-          criticalStations={criticalStations}
-          futureCriticalStations={futurePriorityStations}
-          isPredicting={futureLoading}
-          futureMode={futureMode}
-          onSelectStation={flyToStation}
-          redZoneActive={redZoneActive}
-          isDesktop
-        />
-      )}
-
       <div className="relative flex-1">
-        {!isDesktop && <ControlPanel onToggle={() => setSidebarOpen(true)} />}
         <TimeControlPanel
           futureMode={futureMode}
           onFutureModeChange={setFutureMode}
@@ -226,33 +155,21 @@ function App() {
         />
       </div>
 
-      {!isDesktop && (
-        <Sidebar
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          temperature={temperature}
-          onTemperatureChange={setTemperature}
-          construction={construction}
-          onConstructionChange={setConstruction}
-          searchMatches={searchMatches}
-          criticalStations={criticalStations}
-          futureCriticalStations={futurePriorityStations}
-          isPredicting={futureLoading}
-          futureMode={futureMode}
-          onSelectStation={flyToStation}
-          redZoneActive={redZoneActive}
-          isDesktop={false}
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
-      )}
-
       <AnalyticsModal
         open={Boolean(modalStation)}
         station={modalStation}
         onClose={() => setAnalyticsId(null)}
         temperature={temperature}
         construction={construction}
+      />
+      <Chatbot
+        temperature={temperature}
+        construction={construction}
+        selectedTransformerId={selectedId}
+        futureMode={futureMode}
+        futureDate={futureDateKey}
+        futureSummary={futureData}
+        activeSuggestedTp={activeSuggestedTp}
       />
 
     </div>

@@ -125,7 +125,7 @@ function Chatbot({
   futureSummary,
   activeSuggestedTp
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -190,13 +190,6 @@ function Chatbot({
   )
 
   const buildAutoFuturePrompt = () => {
-    const lang = i18n.resolvedLanguage
-    if (lang === 'uz') {
-      return `${futureDate} uchun Future Mode bo'yicha qisqa boshqaruv xulosasini bering: umumiy holat, eng yuqori riskdagi 3 tuman, jami kerak bo'ladigan TP soni va tezkor tavsiya. Sabablarni batafsil yozmang.`
-    }
-    if (lang === 'ru') {
-      return `Дай короткое управленческое резюме Future Mode на дату ${futureDate}: общий статус, топ-3 районов по риску, общее число нужных TP и оперативная рекомендация. Без подробных причин по каждой точке.`
-    }
     return `Provide a concise Future Mode executive summary for ${futureDate}: overall status, top 3 highest-risk districts, total transformers needed, and one immediate action. Do not include detailed per-TP reasons.`
   }
 
@@ -351,7 +344,7 @@ function Chatbot({
     void sendMessage(autoPrompt, {
       userLabel: t('chatbot.autoReportUser', { date: futureDate })
     })
-  }, [futureMode, futureDate, futureSummary, isLoading, i18n.resolvedLanguage])
+  }, [futureMode, futureDate, futureSummary, isLoading])
 
   return (
     <div className='pointer-events-none fixed bottom-20 right-5 z-[1200] md:bottom-5'>
@@ -468,13 +461,6 @@ function Chatbot({
                           </p>
                           <div className='rounded-lg border border-slate-700/80 bg-slate-800/50 p-2'>
                             <p className='text-[11px] text-slate-300'>
-                              Total TP needed:{' '}
-                              <span className='font-semibold text-slate-100'>
-                                {message.futureState.total_transformers_needed ??
-                                  0}
-                              </span>
-                            </p>
-                            <p className='mt-1 text-[11px] text-slate-300'>
                               Suggested TP markers:{' '}
                               <span className='font-semibold text-slate-100'>
                                 {message.futureState.suggested_tps?.length || 0}

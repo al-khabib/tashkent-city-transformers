@@ -153,8 +153,16 @@ VITE_DEBUG_FLOW=true
 
 ## 5) Start Backend (Recommended)
 
+From project root:
+
 ```bash
 python -m uvicorn server.app:app --host 127.0.0.1 --port 8000
+```
+
+From `server/` directory:
+
+```bash
+python -m uvicorn --app-dir .. server.app:app --host 127.0.0.1 --port 8000
 ```
 
 Health check:
@@ -173,6 +181,12 @@ Alternative (also works):
 
 ```bash
 python -m server.main
+```
+
+If you are inside `server/`, use:
+
+```bash
+python main.py
 ```
 
 ## 5.1) Stop Backend
