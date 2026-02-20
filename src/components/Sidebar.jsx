@@ -148,7 +148,8 @@ function Sidebar({
           {futureMode &&
             !isPredicting &&
             futureCriticalStations.map((station) => {
-              const predictedPercent = Math.round(station.futurePredictedPercent ?? station.projectedPercent);
+              const predictedKva = Math.round(station.futurePredictedKva ?? station.projectedKva);
+              const predictedPercent = Math.round((predictedKva / station.capacity_kva) * 100);
               return (
                 <button
                   key={`future-${station.id}`}
@@ -158,7 +159,7 @@ function Sidebar({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-slate-100">{station.id}</span>
-                    <span className="text-red-300">{predictedPercent}% Load</span>
+                    <span className="text-red-300">{predictedKva} kVA</span>
                   </div>
                   <div className="mt-1 text-[11px] text-slate-400">{station.name}</div>
                   <div className="mt-1 text-[11px] text-slate-400">{station.district}</div>
@@ -184,7 +185,7 @@ function Sidebar({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-slate-100">{station.id}</span>
-                  <span className="text-red-300">{Math.round(station.projectedPercent)}% Load</span>
+                  <span className="text-red-300">{Math.round(station.projectedKva)} kVA</span>
                 </div>
                 <div className="mt-1 text-[11px] text-slate-400">{station.name}</div>
                 <div className="mt-1 text-[11px] text-slate-400">{station.district}</div>
@@ -197,7 +198,7 @@ function Sidebar({
                           ? 'bg-amber-400'
                           : 'bg-sky-400'
                     }`}
-                    style={{ width: `${Math.min(Math.round(station.projectedPercent), 100)}%` }}
+                    style={{ width: `${Math.min(Math.round((station.projectedKva / station.capacity_kva) * 100), 100)}%` }}
                   />
                 </div>
               </button>

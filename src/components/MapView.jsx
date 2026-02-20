@@ -189,13 +189,13 @@ function MapView({
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">{t('map.load')}:</span>
                   <span className="font-semibold text-slate-100">
-                    {Math.round(station.futurePredictedPercent ?? station.projectedPercent)}%
+                    {Math.round((station.futurePredictedKva ?? station.projectedKva) || 0)} kVA
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">{t('map.capacityUtilization')}:</span>
                   <span className="font-semibold text-slate-100">
-                    {Math.round((station.projectedKva / station.capacity_kva) * 100)}%
+                    {Math.round(((station.futurePredictedKva ?? station.projectedKva) / station.capacity_kva) * 100) || 0}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

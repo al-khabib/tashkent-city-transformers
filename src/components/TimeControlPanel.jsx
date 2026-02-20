@@ -91,20 +91,6 @@ function TimeControlPanel({
           <div className='grid grid-cols-2 gap-2'>
             <button
               type='button'
-              onClick={() => applyQuickDate({ type: 'months', value: 3 })}
-              className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
-            >
-              +3 Months
-            </button>
-            <button
-              type='button'
-              onClick={() => applyQuickDate({ type: 'months', value: 6 })}
-              className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
-            >
-              +6 Months
-            </button>
-            <button
-              type='button'
               onClick={() => applyQuickDate({ type: 'years', value: 1 })}
               className='rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400'
             >
