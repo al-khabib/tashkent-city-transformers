@@ -9,12 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "date-fns": "^4.1.0",
     "framer-motion": "^11.0.8",
     "i18next": "^25.8.7",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.460.0",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
+    "react-datepicker": "^7.5.0",
     "react-dom": "^18.2.0",
     "react-i18next": "^16.5.4",
     "react-leaflet": "^4.2.1",

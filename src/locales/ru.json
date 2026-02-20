@@ -15,6 +15,8 @@
     "criticalPriorities": "Критические приоритеты",
     "criticalCount": "красных: {{count}}",
     "noCritical": "В текущей симуляции нет красных трансформаторов.",
+    "noCriticalFuture": "Для выбранной будущей даты критические трансформаторы не найдены.",
+    "calculatingRisks": "Рассчитываем риски...",
     "age": "Возраст",
     "years": "{{count}}г",
     "na": "н/д"
@@ -79,7 +81,17 @@
     "backendError": "Не удалось подключиться к AI backend.",
     "typing": "Печатает...",
     "source": "Источник {{index}}",
-    "noResponse": "Нет ответа."
+    "noResponse": "Нет ответа.",
+    "autoReportUser": "Авто-запрос отчета на {{date}}",
+    "prediction": {
+      "district": "Район",
+      "targetDate": "Целевая дата",
+      "predictedLoad": "Прогноз нагрузки",
+      "capacity": "Текущая мощность",
+      "loadGap": "Дефицит нагрузки",
+      "riskScore": "Оценка риска",
+      "transformersNeeded": "Нужно ТП"
+    }
   },
   "controlPanel": {
     "open": "Открыть панель управления"

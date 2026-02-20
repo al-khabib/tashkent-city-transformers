@@ -15,6 +15,8 @@
     "criticalPriorities": "Kritik ustuvorliklar",
     "criticalCount": "qizil: {{count}}",
     "noCritical": "Joriy simulyatsiyada qizil transformatorlar yo'q.",
+    "noCriticalFuture": "Tanlangan kelajak sanasi uchun kritik transformator topilmadi.",
+    "calculatingRisks": "Xavflar hisoblanmoqda...",
     "age": "Yoshi",
     "years": "{{count}}y",
     "na": "mavjud emas"
@@ -79,7 +81,17 @@
     "backendError": "AI backend bilan aloqa amalga oshmadi.",
     "typing": "Yozmoqda...",
     "source": "Manba {{index}}",
-    "noResponse": "Javob mavjud emas."
+    "noResponse": "Javob mavjud emas.",
+    "autoReportUser": "{{date}} uchun avtomatik hisobot so'rovi",
+    "prediction": {
+      "district": "Tuman",
+      "targetDate": "Maqsad sana",
+      "predictedLoad": "Prognoz yuklama",
+      "capacity": "Joriy quvvat",
+      "loadGap": "Yuklama farqi",
+      "riskScore": "Xavf darajasi",
+      "transformersNeeded": "Kerakli TP soni"
+    }
   },
   "controlPanel": {
     "open": "Boshqaruv panelini ochish"

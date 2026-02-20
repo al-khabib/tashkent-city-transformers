@@ -39,6 +39,77 @@ body {
   box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35);
 }
 
+.grid-zap {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.grid-marker-high {
+  box-shadow:
+    0 0 0 3px rgba(239, 68, 68, 0.35),
+    0 0 14px rgba(239, 68, 68, 0.55);
+}
+
+.grid-suggested-symbol {
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.suggested-marker {
+  background: rgba(251, 146, 60, 0.9) !important;
+  border-color: rgba(251, 191, 36, 0.8);
+}
+
+.pulse-glow {
+  animation: pulse-glow 1.7s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.45);
+  }
+  70% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 14px rgba(251, 146, 60, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0);
+  }
+}
+
+.react-datepicker {
+  border: 1px solid rgba(71, 85, 105, 0.7) !important;
+  background: rgba(2, 6, 23, 0.9) !important;
+  backdrop-filter: blur(12px);
+  color: #e2e8f0 !important;
+}
+
+.react-datepicker__header {
+  background: rgba(15, 23, 42, 0.75) !important;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.6) !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker-time__header,
+.react-datepicker-year-header,
+.react-datepicker__day-name,
+.react-datepicker__day {
+  color: #dbeafe !important;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  background-color: rgba(34, 211, 238, 0.6) !important;
+  color: #082f49 !important;
+}
+
+.react-datepicker__day:hover {
+  background-color: rgba(59, 130, 246, 0.35) !important;
+}
+
 .leaflet-popup-content-wrapper {
   background: transparent;
   box-shadow: none;

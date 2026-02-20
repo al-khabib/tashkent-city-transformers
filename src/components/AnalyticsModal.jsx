@@ -20,20 +20,25 @@ const rand = (min, max) => Math.random() * (max - min) + min;
 
 const RANGE_OPTIONS = ['today', 'week', 'month', 'year', '5year'];
 
+const percentToKva = (percent, station) => {
+  const cap = station?.capacity_kva || 200;
+  return Number(((percent / 100) * cap).toFixed(1));
+};
+
 const buildForecastData = (station, temperature, construction) => {
   if (!station) return [];
   const sourceHistory = station.history || [];
-  const baseLoad = sourceHistory.at(-1)?.load ?? station.projectedPercent;
+  const basePercent = sourceHistory.at(-1)?.load ?? station.projectedPercent;
   const months = [];
-  let currentValue = baseLoad;
+  let currentPercent = basePercent;
   const trendFactor = station.demographic_growth * (1 + construction / 120);
   const temperatureImpact = temperature <= 0 ? 1 + Math.abs(temperature) / 70 : 1 + temperature / 100;
   for (let i = 1; i <= 24; i += 1) {
     const seasonalBoost = ((i % 12) + 1) === 1 || ((i % 12) + 1) === 7 ? 1.08 : 1.02;
-    currentValue = clamp(currentValue * trendFactor * seasonalBoost * temperatureImpact, 0, 150);
+    currentPercent = clamp(currentPercent * trendFactor * seasonalBoost * temperatureImpact, 0, 150);
     months.push({
       date: `+${i}m`,
-      load: Number(currentValue.toFixed(1)),
+      load: percentToKva(currentPercent, station),
       type: 'forecast',
     });
   }
@@ -41,14 +46,14 @@ const buildForecastData = (station, temperature, construction) => {
 };
 
 const createHourlySeries = (history, station) => {
-  const base = history.at(-1)?.load ?? station?.projectedPercent ?? 60;
+  const basePercent = history.at(-1)?.load ?? station?.projectedPercent ?? 60;
   return Array.from({ length: 24 }, (_, index) => {
     const swing = Math.sin(((index + 6) / 24) * Math.PI * 2) * 6;
     const noise = rand(-2.5, 2.5);
-    const load = clamp(base + swing + noise, 25, 140);
+    const loadPercent = clamp(basePercent + swing + noise, 25, 140);
     return {
       date: `${String(index).padStart(2, '0')}:00`,
-      load: Number(load.toFixed(1)),
+      load: percentToKva(loadPercent, station),
       type: 'history',
     };
   });
@@ -65,42 +70,44 @@ const createRollingDailySeries = (history, station, days) => {
     const variation = Math.sin(((index + rand(-0.5, 0.5)) / days) * Math.PI * 2) * 5;
     const seasonalSpike =
       (date.getMonth() === 0 ? rand(6, 12) : 0) + (date.getMonth() === 6 ? rand(4, 9) : 0);
-    const load = clamp(prev + slope * index + variation + seasonalSpike + rand(-3, 3), 25, 140);
+    const loadPercent = clamp(prev + slope * index + variation + seasonalSpike + rand(-3, 3), 25, 140);
     return {
       date: date.toISOString().slice(5, 10),
-      load: Number(load.toFixed(1)),
+      load: percentToKva(loadPercent, station),
       type: 'history',
     };
   });
 };
 
-const createMonthlySeries = (history) => history.map((point) => ({ ...point, type: 'history' }));
+const createMonthlySeries = (history, station) => history.map((point) => ({ ...point, load: percentToKva(point.load, station), type: 'history' }));
 
-const createYearSeries = (history) =>
-  history.slice(-12).map((point) => ({ ...point, type: 'history' }));
+const createYearSeries = (history, station) => history.slice(-12).map((point) => ({ ...point, load: percentToKva(point.load, station), type: 'history' }));
 
-const createYearlyBuckets = (history) => {
+const createYearlyBuckets = (history, station) => {
   const bucket = history.reduce((acc, point) => {
     const year = point.date.slice(0, 4);
     if (!acc[year]) acc[year] = [];
     acc[year].push(point.load);
     return acc;
   }, {});
-  return Object.entries(bucket).map(([year, loads]) => ({
-    date: year,
-    load: Number((loads.reduce((sum, value) => sum + value, 0) / loads.length).toFixed(1)),
-    type: 'history',
-  }));
+  return Object.entries(bucket).map(([year, loads]) => {
+    const avgPercent = loads.reduce((sum, value) => sum + value, 0) / loads.length;
+    return {
+      date: year,
+      load: percentToKva(avgPercent, station),
+      type: 'history',
+    };
+  });
 };
 
-const createFiveYearSeries = (history) => createYearlyBuckets(history).slice(-5);
+const createFiveYearSeries = (history, station) => createYearlyBuckets(history, station).slice(-5);
 
 const RANGE_BUILDERS = {
   today: (history, station) => createHourlySeries(history, station),
   week: (history, station) => createRollingDailySeries(history, station, 7),
   month: (history, station) => createRollingDailySeries(history, station, 30),
-  year: (history) => createYearSeries(history),
-  '5year': (history) => createFiveYearSeries(history),
+  year: (history, station) => createYearSeries(history, station),
+  '5year': (history, station) => createFiveYearSeries(history, station),
 };
 
 function AnalyticsModal({ open, station, onClose, temperature, construction }) {
@@ -153,6 +160,12 @@ function AnalyticsModal({ open, station, onClose, temperature, construction }) {
     return [...annotatedSeries, ...forecastSeries];
   }, [annotatedSeries, forecastSeries, showForecast, station]);
 
+  const maxLoadKva = useMemo(() => {
+    if (!chartData || chartData.length === 0) return station?.capacity_kva || 200;
+    const maxPoint = Math.max(station?.capacity_kva || 0, ...chartData.map((p) => p.load || 0));
+    return Math.ceil(maxPoint * 1.1);
+  }, [chartData, station]);
+
   const riskBadge = station?.replacementRecommended ? 'Replacement Recommended' : null;
   const riskLabel = t(`analytics.risk.${(station?.riskLabel || '').toLowerCase()}`, {
     defaultValue: station?.riskLabel || '',
@@ -160,13 +173,15 @@ function AnalyticsModal({ open, station, onClose, temperature, construction }) {
 
   const seasonalInsights = useMemo(() => {
     if (!historySeries.length) return null;
-    const winterLoads = historySeries.filter((point) => point.date.endsWith('-01')).map((point) => point.load);
-    const summerLoads = historySeries.filter((point) => point.date.endsWith('-07')).map((point) => point.load);
+    // Convert history percent values to kVA for seasonal insights
+    const pctToKva = (p) => percentToKva(p, station);
+    const winterLoads = historySeries.filter((point) => point.date.endsWith('-01')).map((point) => pctToKva(point.load));
+    const summerLoads = historySeries.filter((point) => point.date.endsWith('-07')).map((point) => pctToKva(point.load));
     if (!winterLoads.length || !summerLoads.length) return null;
     const avg = (arr) => arr.reduce((sum, value) => sum + value, 0) / arr.length;
     const winterAvg = Number(avg(winterLoads).toFixed(1));
     const summerAvg = Number(avg(summerLoads).toFixed(1));
-    const annualAvg = Number(avg(historySeries.map((point) => point.load)).toFixed(1));
+    const annualAvg = Number(avg(historySeries.map((point) => pctToKva(point.load))).toFixed(1));
     return {
       winterAvg,
       summerAvg,
@@ -228,8 +243,18 @@ function AnalyticsModal({ open, station, onClose, temperature, construction }) {
               <div className="mt-6 grid gap-6 md:grid-cols-4">
                 <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4">
                   <p className="text-xs uppercase text-slate-400">{t('analytics.projectedLoad')}</p>
-                  <p className="text-4xl font-semibold text-slate-100">{station.projectedPercent}%</p>
-                  <p className="text-sm text-slate-400">{station.projectedKva} kVA / {station.capacity_kva} kVA</p>
+                  <p className={`text-4xl font-semibold ${
+                    station.status === 'green' ? 'text-emerald-400' :
+                    station.status === 'yellow' ? 'text-amber-300' :
+                    station.status === 'red' ? 'text-red-400' :
+                    'text-slate-100'
+                  }`}>{station.projectedPercent}%</p>
+                  <p className={`text-sm ${
+                    station.status === 'green' ? 'text-emerald-300' :
+                    station.status === 'yellow' ? 'text-amber-300' :
+                    station.status === 'red' ? 'text-red-300' :
+                    'text-slate-400'
+                  }`}>{station.projectedKva} kVA / {station.capacity_kva} kVA</p>
                 </div>
                 <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4">
                   <p className="text-xs uppercase text-slate-400">{t('analytics.riskLevel')}</p>
@@ -291,15 +316,15 @@ function AnalyticsModal({ open, station, onClose, temperature, construction }) {
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4">
                     <p className="text-xs uppercase text-slate-400">{t('analytics.winterPeaks')}</p>
-                    <p className="text-3xl font-semibold text-cyan-300">{seasonalInsights.winterAvg}%</p>
-                    <p className="text-sm text-slate-400">
-                      {t('analytics.overAnnual', { value: seasonalInsights.winterDelta })}
-                    </p>
+                    <p className="text-3xl font-semibold text-cyan-300">{seasonalInsights.winterAvg} kVA</p>
+                      <p className="text-sm text-slate-400">
+                        {t('analytics.overAnnual', { value: seasonalInsights.winterDelta })}
+                      </p>
                     <p className="mt-2 text-xs text-slate-400">{t('analytics.winterInsight')}</p>
                   </div>
                   <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4">
                     <p className="text-xs uppercase text-slate-400">{t('analytics.summerPeaks')}</p>
-                    <p className="text-3xl font-semibold text-amber-300">{seasonalInsights.summerAvg}%</p>
+                    <p className="text-3xl font-semibold text-amber-300">{seasonalInsights.summerAvg} kVA</p>
                     <p className="text-sm text-slate-400">
                       {t('analytics.overAnnual', { value: seasonalInsights.summerDelta })}
                     </p>
@@ -336,14 +361,14 @@ function AnalyticsModal({ open, station, onClose, temperature, construction }) {
                     </defs>
                     <CartesianGrid stroke="rgba(148, 163, 184, 0.15)" vertical={false} />
                     <XAxis dataKey="date" stroke="#94a3b8" minTickGap={30} />
-                    <YAxis stroke="#94a3b8" domain={[0, 140]} tickFormatter={(value) => `${value}%`} />
+                    <YAxis stroke="#94a3b8" domain={[0, maxLoadKva]} tickFormatter={(value) => `${value} kVA`} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: '#0f172a',
                         border: '1px solid rgba(148,163,184,0.3)',
                         borderRadius: '12px',
                       }}
-                      formatter={(value) => [`${value}%`, t('analytics.loadAxis')]}
+                      formatter={(value) => [`${value} kVA`, t('analytics.loadAxis')]}
                     />
                     <Area
                       type="monotone"

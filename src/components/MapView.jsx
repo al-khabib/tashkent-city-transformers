@@ -1,8 +1,9 @@
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import PropTypes from 'prop-types';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useEffect, useRef } from 'react';
 
 const INITIAL_CENTER = [41.3111, 69.2797];
 const INITIAL_ZOOM = 12;
@@ -49,17 +50,30 @@ const statusColors = {
   Stable: 'text-emerald-300',
 };
 
-const loadToColor = (percent) => {
-  if (percent >= 90) return '#f87171';
-  if (percent >= 70) return '#facc15';
-  if (percent >= 40) return '#22c55e';
-  return '#94a3b8';
+const statusToColor = (status) => {
+  switch (status) {
+    case 'green':
+      return '#22c55e';  // Emerald for < 57%
+    case 'yellow':
+      return '#eab308';  // Amber for 57-80%
+    case 'red':
+      return '#f87171';  // Red for >= 80%
+    default:
+      return '#94a3b8';  // Gray fallback
+  }
 };
 
-const createMarkerIcon = (color, label, scale, isFocused) => {
-  const size = 28 * scale;
+const loadToColor = (percent, status) => {
+  if (percent >= 90) return '#ef4444';
+  if (percent >= 70) return '#f59e0b';
+  if (status) return statusToColor(status);
+  return '#38bdf8';
+};
+
+const createCurrentTpIcon = (color, scale, isFocused, isHighLoad) => {
+  const size = 30 * scale;
   return L.divIcon({
-    html: `<span class="grid-marker ${isFocused ? 'ring ring-offset-2 ring-sky-400 ring-offset-slate-900' : ''}" style="background:${color};width:${size}px;height:${size}px;">${label}</span>`,
+    html: `<span class="grid-marker ${isFocused ? 'ring ring-offset-2 ring-sky-400 ring-offset-slate-900' : ''} ${isHighLoad ? 'grid-marker-high' : ''}" style="background:${color};width:${size}px;height:${size}px;"><span class="grid-zap">⚡</span></span>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size - 6],
     popupAnchor: [0, -18],
@@ -67,15 +81,39 @@ const createMarkerIcon = (color, label, scale, isFocused) => {
   });
 };
 
+const createSuggestedTpIcon = () =>
+  L.divIcon({
+    html: '<span class="grid-marker suggested-marker pulse-glow"><span class="grid-suggested-symbol">✚</span></span>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 24],
+    popupAnchor: [0, -18],
+    className: '',
+  });
+
 function MapView({
   stations,
+  allStations,
   selectedId,
   onStationSelect,
   onRequestAnalytics,
   onMapReady,
   showHighGrowthZones,
+  futureMode,
+  futurePrediction,
+  onSuggestedTpFocus,
 }) {
   const { t } = useTranslation();
+  const suggestedTpIcon = createSuggestedTpIcon();
+  const futureSuggestions = futurePrediction?.suggested_tps || [];
+  const markerRefs = useRef({});
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const marker = markerRefs.current[selectedId];
+    if (marker && marker.openPopup) {
+      marker.openPopup();
+    }
+  }, [selectedId]);
 
   const getRiskLabel = (riskLabel) => {
     const normalized = (riskLabel || '').toLowerCase();
@@ -97,8 +135,8 @@ function MapView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-
       {showHighGrowthZones &&
+        !futureMode &&
         HIGH_GROWTH_ZONES.map((zone) => (
           <Polygon
             key={zone.id}
@@ -117,12 +155,19 @@ function MapView({
       {stations.map((station) => (
         <Marker
           key={station.id}
+          ref={(marker) => {
+            if (marker) {
+              markerRefs.current[station.id] = marker;
+            }
+          }}
           position={station.coordinates}
-          icon={createMarkerIcon(
-            selectedId === station.id ? '#38bdf8' : loadToColor(station.projectedPercent),
-            Math.round(station.projectedPercent),
-            station.markerScale || 1,
+          icon={createCurrentTpIcon(
             selectedId === station.id
+              ? '#38bdf8'
+              : loadToColor(station.futurePredictedPercent ?? station.projectedPercent, station.status),
+            station.markerScale || 1,
+            selectedId === station.id,
+            (station.futurePredictedPercent ?? station.projectedPercent) >= 90
           )}
           eventHandlers={{
             click: () => {
@@ -135,16 +180,22 @@ function MapView({
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{t('map.transformer')}</p>
               <h3 className="mt-1 text-lg font-semibold text-slate-100">{station.name}</h3>
               <p className="text-xs text-slate-400">{station.district}</p>
+              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800/60 px-2 py-1 text-[11px] text-cyan-200">
+                <Zap className="h-3 w-3" />
+                Existing TP
+              </div>
 
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">{t('map.load')}:</span>
-                  <span className="font-semibold text-slate-100">{station.projectedPercent}%</span>
+                  <span className="font-semibold text-slate-100">
+                    {Math.round((station.futurePredictedKva ?? station.projectedKva) || 0)} kVA
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">{t('map.capacityUtilization')}:</span>
                   <span className="font-semibold text-slate-100">
-                    {Math.round((station.projectedKva / station.capacity_kva) * 100)}%
+                    {Math.round(((station.futurePredictedKva ?? station.projectedKva) / station.capacity_kva) * 100) || 0}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -180,6 +231,45 @@ function MapView({
           </Popup>
         </Marker>
       ))}
+
+      {futureMode &&
+        futureSuggestions.map((point) => (
+          <Marker
+            key={point.id}
+            position={point.coordinates}
+            icon={suggestedTpIcon}
+            eventHandlers={{
+              click: () => {
+                onSuggestedTpFocus?.(point);
+              },
+            }}
+          >
+            <Popup className="bg-transparent" minWidth={260} maxWidth={300}>
+              <div className="rounded-2xl border border-amber-500/50 bg-slate-900/95 p-4 text-slate-100 shadow-xl backdrop-blur">
+                <div className="mb-2 inline-flex rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-200">
+                  Recommendation
+                </div>
+                <p className="text-sm font-semibold text-slate-100">
+                  Proposed Installation: {point.district}
+                </p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Date: {point.target_date || 'N/A'}
+                </p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Expected Load: {point.expected_load_kva ?? 'N/A'} kVA
+                </p>
+                <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
+                  {point.why_summary || 'Projected demand exceeds available district capacity.'}
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-300">
+                  {(point.reasons || []).map((reason) => (
+                    <li key={`${point.id}-${reason}`}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
     </MapContainer>
   );
 }
@@ -192,6 +282,7 @@ MapView.propTypes = {
       coordinates: PropTypes.arrayOf(PropTypes.number).isRequired,
       district: PropTypes.string.isRequired,
       projectedPercent: PropTypes.number.isRequired,
+      futurePredictedPercent: PropTypes.number,
       projectedKva: PropTypes.number.isRequired,
       capacity_kva: PropTypes.number.isRequired,
       riskLabel: PropTypes.string.isRequired,
@@ -211,19 +302,61 @@ MapView.propTypes = {
       ),
     })
   ).isRequired,
+  allStations: PropTypes.arrayOf(
+    PropTypes.shape({
+      district: PropTypes.string.isRequired,
+      coordinates: PropTypes.arrayOf(PropTypes.number).isRequired,
+    })
+  ),
   selectedId: PropTypes.string,
   onStationSelect: PropTypes.func,
   onRequestAnalytics: PropTypes.func,
   onMapReady: PropTypes.func,
   showHighGrowthZones: PropTypes.bool,
+  futureMode: PropTypes.bool,
+  futurePrediction: PropTypes.shape({
+    district_predictions: PropTypes.arrayOf(
+      PropTypes.shape({
+        district: PropTypes.string,
+        load_percentage: PropTypes.number,
+      })
+    ),
+    station_predictions: PropTypes.arrayOf(
+      PropTypes.shape({
+        id: PropTypes.string,
+        predicted_load_pct: PropTypes.number,
+      })
+    ),
+    suggested_tps: PropTypes.arrayOf(
+      PropTypes.shape({
+        id: PropTypes.string,
+        district: PropTypes.string,
+        coordinates: PropTypes.arrayOf(PropTypes.number),
+        expected_load_kw: PropTypes.number,
+        reasons: PropTypes.arrayOf(PropTypes.string),
+        target_date: PropTypes.string,
+        why_summary: PropTypes.string,
+        expected_load_mw: PropTypes.number,
+        current_capacity_mw: PropTypes.number,
+        load_gap_mw: PropTypes.number,
+        load_percentage: PropTypes.number,
+        transformers_needed: PropTypes.number,
+      })
+    ),
+  }),
+  onSuggestedTpFocus: PropTypes.func,
 };
 
 MapView.defaultProps = {
+  allStations: undefined,
   selectedId: null,
   onStationSelect: undefined,
   onRequestAnalytics: undefined,
   onMapReady: undefined,
   showHighGrowthZones: false,
+  futureMode: false,
+  futurePrediction: null,
+  onSuggestedTpFocus: undefined,
 };
 
 export default MapView;

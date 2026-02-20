@@ -15,6 +15,8 @@
     "criticalPriorities": "Critical Priorities",
     "criticalCount": "{{count}} red",
     "noCritical": "No red transformers under current simulation.",
+    "noCriticalFuture": "No critical transformers found for the selected future date.",
+    "calculatingRisks": "Calculating Risks...",
     "age": "Age",
     "years": "{{count}}y",
     "na": "n/a"
@@ -72,14 +74,24 @@
   },
   "chatbot": {
     "title": "Grid AI Assistant",
-    "subtitle": "Context-aware RAG support",
+    "subtitle": "Bot",
     "welcome": "Grid Assistant online. Ask about risks, district stress, or mitigation actions. I already see your current simulation state.",
     "placeholder": "Ask about overload risk or action plan...",
     "openAria": "Open AI assistant",
     "backendError": "Unable to reach the AI backend.",
-    "typing": "Typing...",
+    "typing": "Predicting...",
     "source": "Source {{index}}",
-    "noResponse": "No response."
+    "noResponse": "No response.",
+    "autoReportUser": "Auto-report request for {{date}}",
+    "prediction": {
+      "district": "District",
+      "targetDate": "Target Date",
+      "predictedLoad": "Predicted Load",
+      "capacity": "Current Capacity",
+      "loadGap": "Load Gap",
+      "riskScore": "Risk Score",
+      "transformersNeeded": "Transformers Needed"
+    }
   },
   "controlPanel": {
     "open": "Open grid controls"
