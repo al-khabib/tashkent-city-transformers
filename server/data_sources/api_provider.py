@@ -50,3 +50,4 @@ class CompanyApiGridDataProvider(GridDataProvider):
             if isinstance(data, list):
                 return [item for item in data if isinstance(item, dict)]
         return []
+
