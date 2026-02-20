@@ -79,7 +79,7 @@
     "placeholder": "Ask about overload risk or action plan...",
     "openAria": "Open AI assistant",
     "backendError": "Unable to reach the AI backend.",
-    "typing": "Typing...",
+    "typing": "Predicting...",
     "source": "Source {{index}}",
     "noResponse": "No response.",
     "autoReportUser": "Auto-report request for {{date}}",
