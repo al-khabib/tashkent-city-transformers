@@ -17,6 +17,7 @@ class RuntimeState:
     llm: Ollama
     data_provider_name: str
     future_state: Dict[str, Any] = field(default_factory=dict)
+    current_stations: list[Dict[str, Any]] = field(default_factory=list)
 
 
 

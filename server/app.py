@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from server.config import get_settings
 from server.schemas import ChatQuery, PredictRequest
-from server.services.prediction_service import build_prediction_response
+from server.services.prediction_service import build_prediction_response_async
 from server.services.station_service import generate_stations_from_csv
 from server.state import create_runtime_state
 
@@ -32,6 +33,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def preload_current_tps():
+    state.current_stations = generate_stations_from_csv(state)
 
 
 @app.middleware("http")
@@ -57,7 +63,9 @@ async def request_logging_middleware(request: Request, call_next):
 @app.get("/api/stations")
 async def get_all_stations(request: Request):
     try:
-        stations = generate_stations_from_csv(state)
+        if not state.current_stations:
+            state.current_stations = generate_stations_from_csv(state)
+        stations = state.current_stations
         return {
             "request_id": request.state.request_id,
             "count": len(stations),
@@ -74,7 +82,9 @@ async def get_all_stations(request: Request):
 @app.get("/api/stations/{district}")
 async def get_district_stations(district: str, request: Request):
     try:
-        all_stations = generate_stations_from_csv(state)
+        if not state.current_stations:
+            state.current_stations = generate_stations_from_csv(state)
+        all_stations = state.current_stations
         district_stations = [s for s in all_stations if s["district"].lower() == district.lower()]
 
         if not district_stations:
@@ -102,8 +112,10 @@ async def get_district_stations(district: str, request: Request):
 @app.post("/predict")
 async def predict_endpoint(item: PredictRequest, request: Request):
     try:
-        all_stations = generate_stations_from_csv(state)
-        payload = build_prediction_response(state, item.target_date, all_stations)
+        if not state.current_stations:
+            state.current_stations = generate_stations_from_csv(state)
+        all_stations = state.current_stations
+        payload = await build_prediction_response_async(state, item.target_date, all_stations)
         state.future_state = payload.pop("future_state")
         return {
             "request_id": request.state.request_id,
@@ -145,7 +157,7 @@ async def ask_question(item: ChatQuery, request: Request):
         )
 
         try:
-            answer = str(state.llm.invoke(prompt)).strip()
+            answer = str(await asyncio.to_thread(state.llm.invoke, prompt)).strip()
         except RequestException as error:
             logger.warning("ask_question failed: Ollama request error: %s", error)
             raise HTTPException(

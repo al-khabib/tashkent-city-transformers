@@ -1,3 +1,4 @@
+import asyncio
 import math
 import random
 from datetime import date, datetime
@@ -432,3 +433,13 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
         "total_transformers_needed": future_state["total_transformers_needed"],
         "future_state": future_state,
     }
+
+
+async def build_prediction_response_async(
+    state: RuntimeState,
+    target_date: str,
+    all_stations: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    # Offload the full district compute loop (including state.model.predict calls)
+    # to a worker thread so the event loop stays responsive to signals/cancellation.
+    return await asyncio.to_thread(build_prediction_response, state, target_date, all_stations)

@@ -22,6 +22,7 @@ const API_BASE_URL = (
 const DEBUG_FLOW =
   import.meta.env.DEV || import.meta.env.VITE_DEBUG_FLOW === 'true'
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 90000)
+const AUTO_ASK_DEBOUNCE_MS = 500
 
 const createRequestId = () => {
   if (
@@ -341,9 +342,12 @@ function Chatbot({
     setOpen(true)
 
     const autoPrompt = buildAutoFuturePrompt()
-    void sendMessage(autoPrompt, {
-      userLabel: t('chatbot.autoReportUser', { date: futureDate })
-    })
+    const timer = window.setTimeout(() => {
+      void sendMessage(autoPrompt, {
+        userLabel: t('chatbot.autoReportUser', { date: futureDate })
+      })
+    }, AUTO_ASK_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
   }, [futureMode, futureDate, futureSummary, isLoading])
 
   return (

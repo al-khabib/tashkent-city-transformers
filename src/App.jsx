@@ -8,6 +8,7 @@ import { useGridStress } from './hooks/useGridStress.js';
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 ).replace(/\/+$/, '');
+const PREDICT_DEBOUNCE_MS = 350;
 
 function App() {
   const [selectedId, setSelectedId] = useState(null);
@@ -87,8 +88,13 @@ function App() {
         setFutureLoading(false);
       }
     };
-    runPrediction();
-    return () => controller.abort();
+    const timeoutId = window.setTimeout(() => {
+      runPrediction();
+    }, PREDICT_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [futureMode, futureDateKey]);
 
   const handleFutureDateChange = (nextDate) => {
