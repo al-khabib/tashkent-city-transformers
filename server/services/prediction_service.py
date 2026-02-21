@@ -1,10 +1,14 @@
 import math
 import random
 from datetime import date, datetime
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from server.state import RuntimeState
 from server.utils import parse_target_date
+
+
+class PredictionCancelledError(Exception):
+    """Raised when a prediction request is cancelled while still computing."""
 
 
 
@@ -305,21 +309,35 @@ def _build_proximity_suggestions(
 
 
 
-def build_prediction_response(state: RuntimeState, target_date: str, all_stations: list[Dict[str, Any]]) -> Dict[str, Any]:
+def build_prediction_response(
+    state: RuntimeState,
+    target_date: str,
+    all_stations: list[Dict[str, Any]],
+    should_cancel: Callable[[], bool] | None = None,
+) -> Dict[str, Any]:
+    def _ensure_not_cancelled() -> None:
+        if should_cancel and should_cancel():
+            raise PredictionCancelledError("Prediction cancelled")
+
     district_predictions = []
 
     for district in state.known_districts:
+        _ensure_not_cancelled()
         prediction = predict_grid_load(state, district, target_date)
         district_predictions.append(prediction)
 
+    _ensure_not_cancelled()
     district_prediction_map = {entry["district"]: entry for entry in district_predictions}
     stations_future = _build_station_future_projection(all_stations, district_prediction_map)
+    _ensure_not_cancelled()
     suggested_tps = _build_proximity_suggestions(stations_future, district_prediction_map)
     district_suggestion_counts: Dict[str, int] = {}
     for point in suggested_tps:
+        _ensure_not_cancelled()
         district_key = str(point.get("district", "")).strip().lower()
         district_suggestion_counts[district_key] = district_suggestion_counts.get(district_key, 0) + 1
 
+    _ensure_not_cancelled()
     critical_priority = sorted(
         stations_future,
         key=lambda station: station["predicted_load_pct"],
@@ -327,6 +345,7 @@ def build_prediction_response(state: RuntimeState, target_date: str, all_station
     )[:5]
 
     for point in suggested_tps:
+        _ensure_not_cancelled()
         district_prediction = district_prediction_map.get(point["district"], {})
         feature_projection = district_prediction.get("feature_projection", {})
 

@@ -156,13 +156,13 @@ VITE_DEBUG_FLOW=true
 From project root:
 
 ```bash
-python -m uvicorn server.app:app --host 127.0.0.1 --port 8000
+python -m server.main
 ```
 
 From `server/` directory:
 
 ```bash
-python -m uvicorn --app-dir .. server.app:app --host 127.0.0.1 --port 8000
+python main.py
 ```
 
 Health check:
@@ -177,23 +177,23 @@ You should see JSON with:
 - `data_source_provider` (`csv` or `company_api`)
 - valid `model_path`
 
-Alternative (also works):
+Alternative (also works, but does not use custom SIGINT shutdown handler):
 
 ```bash
-python -m server.main
+python -m uvicorn server.app:app --host 127.0.0.1 --port 8000
 ```
 
 If you are inside `server/`, use:
 
 ```bash
-python main.py
+python -m uvicorn --app-dir .. server.app:app --host 127.0.0.1 --port 8000
 ```
 
 ## 5.1) Stop Backend
 
 Preferred:
 
-- Press `Ctrl + C` in the terminal running uvicorn.
+- Press `Ctrl + C` in the terminal running `python -m server.main`.
 
 If process does not exit cleanly, stop by port:
 
